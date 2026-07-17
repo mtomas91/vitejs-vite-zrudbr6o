@@ -20,6 +20,7 @@ import {
   MessagesSquare,
   Search,
   LogOut,
+  Settings,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -160,6 +161,23 @@ function TopBar({ title, onBack, right }) {
   );
 }
 
+function TornEdge() {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: -6,
+        left: "50%",
+        transform: "translateX(-50%) rotate(-3deg)",
+        width: 46,
+        height: 16,
+        background: "rgba(193,135,58,0.35)",
+        borderRadius: 2,
+      }}
+    />
+  );
+}
+
 function VisibilityTag({ visibility }) {
   const map = {
     privado: { icon: Lock, label: "Solo yo", tone: PALETTE.textMuted },
@@ -282,35 +300,20 @@ function AuthScreen({ onAuthed }) {
 
 // ---- pantalla de perfiles ----------------------------------------------------
 
-function ProfilesScreen({ profiles, onOpenProfile, onCreateChild, onOpenNotifications, unreadCount, onLogout }) {
+function ConfiguracionScreen({ profiles, onOpenProfile, onCreateChild, onBack }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newAge, setNewAge] = useState("");
 
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
-      <TopBar
-        title="Tu Nest"
-        right={
-          <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={onOpenNotifications} style={{ position: "relative", background: "none", border: "none", cursor: "pointer", padding: 4, color: PALETTE.textPrimary }}>
-              <Bell size={21} />
-              {unreadCount > 0 && (
-                <span style={{ position: "absolute", top: 1, right: 1, width: 8, height: 8, borderRadius: "50%", background: PALETTE.amber, border: `1.5px solid ${PALETTE.bgDeep}` }} />
-              )}
-            </button>
-            <button onClick={onLogout} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: PALETTE.textMuted }}>
-              <LogOut size={19} />
-            </button>
-          </div>
-        }
-      />
+      <TopBar title="Configuración" onBack={onBack} />
       <div style={{ padding: "0 20px" }}>
         <p style={{ color: PALETTE.textMuted, fontSize: 13, lineHeight: 1.5, marginTop: -6, marginBottom: 20 }}>
           Perfiles bajo tu cuenta. Los perfiles administrados solo ven y comentan lo que vos autorizás.
         </p>
 
-        {profiles.map((p) => (
+        {profiles.filter((p) => p.tipo === "hijo").map((p) => (
           <button key={p.id} onClick={() => onOpenProfile(p.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, background: PALETTE.bgPanel, border: `1px solid ${PALETTE.border}`, borderRadius: 16, padding: "14px 16px", marginBottom: 12, cursor: "pointer", textAlign: "left" }}>
             <Avatar name={p.name} hue={p.hue} size={48} />
             <div style={{ flex: 1 }}>
@@ -523,11 +526,37 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId }) {
   );
 }
 
-function PostCard({ post, onComment }) {
+function tiltFor(id) {
+  if (!id) return 0;
+  let sum = 0;
+  for (let i = 0; i < id.length; i++) sum += id.charCodeAt(i);
+  return (sum % 7) - 3; // entre -3 y 3 grados
+}
+
+function PostCard({ post, onComment, header }) {
   const [text, setText] = useState("");
+  const deg = tiltFor(post.id);
   return (
-    <div style={{ background: PALETTE.bgPanel, border: `1px solid ${PALETTE.border}`, borderRadius: 12, padding: "16px 16px 14px", marginBottom: 18 }}>
-      <div style={{ height: 190, borderRadius: 8, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+    <div
+      style={{
+        position: "relative",
+        background: PALETTE.bgPanel,
+        border: `1px solid ${PALETTE.border}`,
+        borderRadius: 4,
+        padding: "16px 16px 14px",
+        marginBottom: 26,
+        boxShadow: "0 10px 22px rgba(0,0,0,0.14)",
+        transform: `rotate(${deg}deg)`,
+      }}
+    >
+      <TornEdge />
+      {header && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <Avatar name={header.name} hue={header.hue} size={26} />
+          <span style={{ fontSize: 12.5, fontFamily: "'Inter', sans-serif", fontWeight: 600, color: PALETTE.textPrimary }}>{header.name}</span>
+        </div>
+      )}
+      <div style={{ height: 190, borderRadius: 3, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
         {post.imageUrl ? (
           <img src={post.imageUrl} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         ) : (
@@ -555,6 +584,82 @@ function PostCard({ post, onComment }) {
             <Send size={15} />
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function WallScreen({ myAccountId, onOpenNotifications, unreadCount, onLogout }) {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data: postsData } = await supabase
+      .from("posts")
+      .select("*")
+      .neq("owner_id", myAccountId)
+      .order("created_at", { ascending: false })
+      .limit(40);
+
+    const profileIds = [...new Set((postsData || []).map((p) => p.profile_id))];
+    let profilesMap = {};
+    if (profileIds.length > 0) {
+      const { data: profs } = await supabase.from("profiles").select("id,name,hue").in("id", profileIds);
+      profilesMap = Object.fromEntries((profs || []).map((p) => [p.id, p]));
+    }
+
+    const enriched = await Promise.all(
+      (postsData || []).map(async (post) => {
+        let imageUrl = null;
+        if (post.image_url) {
+          const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 3600);
+          imageUrl = signed?.signedUrl || null;
+        }
+        const { data: comments } = await supabase.from("comments").select("*").eq("post_id", post.id).order("created_at", { ascending: true });
+        return { ...post, imageUrl, comments: comments || [], header: profilesMap[post.profile_id] };
+      })
+    );
+    setPosts(enriched);
+    setLoading(false);
+  }, [myAccountId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function addComment(postId, text) {
+    if (!text.trim()) return;
+    await supabase.from("comments").insert({ post_id: postId, author_id: myAccountId, author_name: "Vos", text: text.trim() });
+    load();
+  }
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
+      <TopBar
+        title="Wall"
+        right={
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={onOpenNotifications} style={{ position: "relative", background: "none", border: "none", cursor: "pointer", padding: 4, color: PALETTE.textPrimary }}>
+              <Bell size={21} />
+              {unreadCount > 0 && (
+                <span style={{ position: "absolute", top: 1, right: 1, width: 8, height: 8, borderRadius: "50%", background: PALETTE.amber, border: `1.5px solid ${PALETTE.bgDeep}` }} />
+              )}
+            </button>
+            <button onClick={onLogout} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: PALETTE.textMuted }}>
+              <LogOut size={19} />
+            </button>
+          </div>
+        }
+      />
+      <div style={{ padding: "6px 20px 0" }}>
+        {loading && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: 30 }}>Cargando...</div>}
+        {!loading && posts.length === 0 && (
+          <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "40px 10px" }}>
+            Todavía no hay nada compartido con vos. Cuando alguien de tu círculo publique algo público o te lo comparta, va a aparecer acá.
+          </div>
+        )}
+        {posts.map((post) => (
+          <PostCard key={post.id} post={post} header={post.header} onComment={(text) => addComment(post.id, text)} />
+        ))}
       </div>
     </div>
   );
@@ -712,26 +817,73 @@ function ChatDetailScreen({ contact, myAccountId, onBack }) {
 
 // ---- cuenta y nav ---------------------------------------------------------------
 
-function CuentaScreen({ account, profiles }) {
+function CuentaScreen({ account, myProfile, onOpenConfig, onOpenMyFeed }) {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!myProfile) { setLoading(false); return; }
+    setLoading(true);
+    const { data } = await supabase.from("posts").select("*").eq("profile_id", myProfile.id).order("created_at", { ascending: false });
+    const withUrls = await Promise.all(
+      (data || []).map(async (post) => {
+        let imageUrl = null;
+        if (post.image_url) {
+          const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 3600);
+          imageUrl = signed?.signedUrl || null;
+        }
+        return { ...post, imageUrl };
+      })
+    );
+    setPosts(withUrls);
+    setLoading(false);
+  }, [myProfile]);
+
+  useEffect(() => { load(); }, [load]);
+
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
-      <TopBar title="Tu cuenta" />
+      <TopBar
+        title="Tu cuenta"
+        right={
+          <button onClick={onOpenConfig} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: PALETTE.textPrimary }}>
+            <Settings size={20} />
+          </button>
+        }
+      />
       <div style={{ padding: "0 20px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, background: PALETTE.bgPanel, border: `1px solid ${PALETTE.border}`, borderRadius: 16, padding: 16, marginBottom: 20 }}>
+        <button
+          onClick={onOpenMyFeed}
+          style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, background: PALETTE.bgPanel, border: `1px solid ${PALETTE.border}`, borderRadius: 16, padding: 16, marginBottom: 20, cursor: "pointer", textAlign: "left" }}
+        >
           <Avatar name={account?.name} size={52} />
           <div style={{ flex: 1 }}>
             <div style={{ color: PALETTE.textPrimary, fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 17 }}>{account?.name}</div>
             <div style={{ color: PALETTE.textMuted, fontSize: 12 }}>{account?.email}</div>
             <div style={{ marginTop: 4 }}><Badge tone="sage"><ShieldCheck size={11} /> Verificada</Badge></div>
           </div>
+        </button>
+
+        <div style={{ color: PALETTE.textMuted, fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 10 }}>
+          Tus recuerdos {posts.length > 0 && `(${posts.length})`}
         </div>
-        <div style={{ color: PALETTE.textMuted, fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 10 }}>Perfiles administrados</div>
-        {profiles.filter((p) => p.tipo === "hijo").map((p) => (
-          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, background: PALETTE.bgPanel, border: `1px solid ${PALETTE.border}`, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }}>
-            <Avatar name={p.name} hue={p.hue} size={38} />
-            <div style={{ color: PALETTE.textPrimary, fontSize: 13.5, fontFamily: "'Inter', sans-serif", fontWeight: 600 }}>{p.name}</div>
-          </div>
-        ))}
+
+        {loading && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: 30 }}>Cargando...</div>}
+        {!loading && posts.length === 0 && (
+          <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "30px 10px" }}>Todavía no guardaste ningún recuerdo.</div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4 }}>
+          {posts.map((post) => (
+            <div key={post.id} style={{ aspectRatio: "1 / 1", borderRadius: 4, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {post.imageUrl ? (
+                <img src={post.imageUrl} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <Camera size={20} color={PALETTE.textMuted} />
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -739,7 +891,7 @@ function CuentaScreen({ account, profiles }) {
 
 function BottomNav({ tab, setTab }) {
   const items = [
-    { id: "perfiles", icon: Home, label: "Inicio" },
+    { id: "wall", icon: Home, label: "Wall" },
     { id: "chats", icon: MessagesSquare, label: "Chats" },
     { id: "circulo", icon: Users, label: "Círculo" },
     { id: "cuenta", icon: UserCircle, label: "Cuenta" },
@@ -768,10 +920,11 @@ export default function NestApp() {
   const [profiles, setProfiles] = useState([]);
   const [circulo, setCirculo] = useState([]);
   const [solicitudes, setSolicitudes] = useState([]);
-  const [tab, setTab] = useState("perfiles");
+  const [tab, setTab] = useState("wall");
   const [openProfileId, setOpenProfileId] = useState(null);
   const [openChatContact, setOpenChatContact] = useState(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -829,6 +982,7 @@ export default function NestApp() {
   }
 
   const openProfile = profiles.find((p) => p.id === openProfileId);
+  const myProfile = profiles.find((p) => p.tipo === "adulto");
 
   if (session === undefined) {
     return (
@@ -860,6 +1014,13 @@ export default function NestApp() {
               ))}
             </div>
           </div>
+        ) : showConfig ? (
+          <ConfiguracionScreen
+            profiles={profiles}
+            onOpenProfile={(id) => { setShowConfig(false); setOpenProfileId(id); }}
+            onCreateChild={createChild}
+            onBack={() => setShowConfig(false)}
+          />
         ) : openChatContact ? (
           <ChatDetailScreen contact={openChatContact} myAccountId={session.user.id} onBack={() => setOpenChatContact(null)} />
         ) : openProfile ? (
@@ -872,11 +1033,9 @@ export default function NestApp() {
           />
         ) : (
           <>
-            {tab === "perfiles" && (
-              <ProfilesScreen
-                profiles={profiles}
-                onOpenProfile={setOpenProfileId}
-                onCreateChild={createChild}
+            {tab === "wall" && (
+              <WallScreen
+                myAccountId={session.user.id}
                 onOpenNotifications={() => setShowNotifications(true)}
                 unreadCount={solicitudes.length}
                 onLogout={handleLogout}
@@ -886,7 +1045,14 @@ export default function NestApp() {
             {tab === "circulo" && (
               <CirculoScreen myAccountId={session.user.id} circulo={circulo} solicitudes={solicitudes} onRefresh={loadAll} />
             )}
-            {tab === "cuenta" && <CuentaScreen account={account} profiles={profiles} />}
+            {tab === "cuenta" && (
+              <CuentaScreen
+                account={account}
+                myProfile={myProfile}
+                onOpenConfig={() => setShowConfig(true)}
+                onOpenMyFeed={() => myProfile && setOpenProfileId(myProfile.id)}
+              />
+            )}
             <BottomNav tab={tab} setTab={setTab} />
           </>
         )}
