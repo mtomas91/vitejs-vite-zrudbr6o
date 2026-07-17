@@ -27,7 +27,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const SUPABASE_URL = "https://ryupulkpmcygscnlkdwn.supabase.co";
-const SUPABASE_KEY = "sb_publishable_rOzbGWAmUqyGUIGwSGxz6A_w51nA36W";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ5dXB1bGtwbWN5Z3NjbmxrZHduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMDc5NTgsImV4cCI6MjA5OTg4Mzk1OH0.Z33G9uc42awpzTaZYQ-m__M5xioEwMAoy8fTztDbNOU";
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const BUCKET = "nest-photos";
 
