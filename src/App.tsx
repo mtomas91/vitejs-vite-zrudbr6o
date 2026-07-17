@@ -17,6 +17,8 @@ import {
   Baby,
   Settings2,
   Image as ImageIcon,
+  Bell,
+  MessagesSquare,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -126,6 +128,22 @@ const INITIAL_SOLICITUDES = [
   { id: "s1", name: "Julieta Gómez", detalle: "Amiga de Sofía · verificada" },
   { id: "s2", name: "Nico Ríos", detalle: "Primo · verificado" },
 ];
+
+const INITIAL_NOTIFICATIONS = [
+  { id: "n1", text: "Tía Carla comentó en tu foto \"Con las amigas después del cole\"", time: "hace 2h", read: false },
+  { id: "n2", text: "Julieta Gómez quiere unirse a tu círculo", time: "hace 5h", read: false },
+  { id: "n3", text: "Nico Ríos quiere unirse a tu círculo", time: "hace 5h", read: false },
+  { id: "n4", text: "Mateo comentó en tu foto \"Domingo de asado en lo de mis viejos\"", time: "hace 1d", read: true },
+];
+
+const INITIAL_CHATS = {
+  c1: [
+    { id: "m1", from: "them", text: "¡Qué lindas fotos subiste esta semana!", time: "10:32" },
+    { id: "m2", from: "me", text: "Gracias! Las sacamos el finde en Tigre", time: "10:35" },
+  ],
+  c2: [],
+  c3: [{ id: "m3", from: "them", text: "Mandame la foto del cumple de Mateo porfa", time: "ayer" }],
+};
 
 // ---- pequeños componentes ---------------------------------------------------
 
@@ -300,7 +318,7 @@ function LoginScreen({ onLogin }) {
           margin: "0 0 8px",
         }}
       >
-        PicVault
+        Nest
       </h1>
       <p style={{ color: PALETTE.textMuted, fontSize: 14.5, lineHeight: 1.6, margin: "0 0 36px" }}>
         Un lugar cerrado para guardar recuerdos con tu familia y tu círculo de siempre.
@@ -401,14 +419,93 @@ const primaryBtnStyle = {
   cursor: "pointer",
 };
 
-function ProfilesScreen({ profiles, onOpenProfile, onCreateChild }) {
+function NotificationsScreen({ notifications, onBack }) {
+  return (
+    <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
+      <TopBar title="Notificaciones" onBack={onBack} />
+      <div style={{ padding: "0 20px" }}>
+        {notifications.length === 0 && (
+          <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "40px 10px" }}>
+            No tenés notificaciones todavía.
+          </div>
+        )}
+        {notifications.map((n) => (
+          <div
+            key={n.id}
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "flex-start",
+              padding: "12px 4px",
+              borderBottom: `1px solid ${PALETTE.border}`,
+              opacity: n.read ? 0.6 : 1,
+            }}
+          >
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: n.read ? "transparent" : PALETTE.amber,
+                marginTop: 5,
+                flexShrink: 0,
+              }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ color: PALETTE.textPrimary, fontSize: 13, fontFamily: "'Inter', sans-serif", lineHeight: 1.4 }}>
+                {n.text}
+              </div>
+              <div style={{ color: PALETTE.textMuted, fontSize: 11, marginTop: 3, fontFamily: "'JetBrains Mono', monospace" }}>
+                {n.time}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProfilesScreen({ profiles, onOpenProfile, onCreateChild, unreadCount, onOpenNotifications }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newAge, setNewAge] = useState("");
 
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
-      <TopBar title="Tu PicVault" />
+      <TopBar
+        title="Tu Nest"
+        right={
+          <button
+            onClick={onOpenNotifications}
+            style={{
+              position: "relative",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              display: "flex",
+              padding: 4,
+              color: PALETTE.textPrimary,
+            }}
+          >
+            <Bell size={21} />
+            {unreadCount > 0 && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: 1,
+                  right: 1,
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: PALETTE.amber,
+                  border: `1.5px solid ${PALETTE.bgDeep}`,
+                }}
+              />
+            )}
+          </button>
+        }
+      />
       <div style={{ padding: "0 20px" }}>
         <p style={{ color: PALETTE.textMuted, fontSize: 13, lineHeight: 1.5, marginTop: -6, marginBottom: 20 }}>
           Perfiles bajo tu cuenta. Los perfiles administrados solo ven y comentan
@@ -620,7 +717,8 @@ function PostCard({ post, onComment }) {
         style={{
           height: 190,
           borderRadius: 3,
-          background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)",
+          overflow: "hidden",
+          background: post.imageUrl ? "#00000010" : "linear-gradient(160deg,#F0EBE0,#E4DDCF)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -628,7 +726,15 @@ function PostCard({ post, onComment }) {
           marginBottom: 12,
         }}
       >
-        {post.emoji}
+        {post.imageUrl ? (
+          <img
+            src={post.imageUrl}
+            alt={post.caption}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : (
+          post.emoji
+        )}
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
         <p style={{ color: PALETTE.textPrimary, fontFamily: "'Inter', sans-serif", fontSize: 14, margin: 0, flex: 1 }}>
@@ -690,6 +796,7 @@ function FeedScreen({ profile, circulo, onBack, onAddComment, onPublish }) {
   const [caption, setCaption] = useState("");
   const emojis = ["📷", "🌳", "🎂", "🏖️", "🎨", "⚽"];
   const [emoji, setEmoji] = useState(emojis[0]);
+  const [imageUrl, setImageUrl] = useState(null);
   const [visibility, setVisibility] = useState("privado");
   const [sharedWith, setSharedWith] = useState([]);
 
@@ -699,12 +806,21 @@ function FeedScreen({ profile, circulo, onBack, onAddComment, onPublish }) {
     { id: "publico", label: "Todo mi círculo", desc: "Visible para todos tus contactos aceptados", icon: Globe },
   ];
 
+  function handleFileChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setImageUrl(reader.result);
+    reader.readAsDataURL(file);
+  }
+
   function toggleShared(id) {
     setSharedWith((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   function resetForm() {
     setCaption("");
+    setImageUrl(null);
     setVisibility("privado");
     setSharedWith([]);
     setShowPublish(false);
@@ -768,25 +884,89 @@ function FeedScreen({ profile, circulo, onBack, onAddComment, onPublish }) {
               marginBottom: 20,
             }}
           >
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              {emojis.map((e) => (
+            <input
+              type="file"
+              accept="image/*"
+              id={`file-upload-${profile.id}`}
+              onChange={handleFileChange}
+              style={{ display: "none" }}
+            />
+            {imageUrl ? (
+              <div style={{ position: "relative", marginBottom: 10 }}>
+                <img
+                  src={imageUrl}
+                  alt="preview"
+                  style={{ width: "100%", height: 160, objectFit: "cover", borderRadius: 10 }}
+                />
                 <button
-                  key={e}
-                  onClick={() => setEmoji(e)}
+                  onClick={() => setImageUrl(null)}
                   style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 8,
-                    border: `1px solid ${emoji === e ? PALETTE.amber : PALETTE.border}`,
-                    background: emoji === e ? `${PALETTE.amber}22` : "transparent",
-                    fontSize: 16,
+                    position: "absolute",
+                    top: 8,
+                    right: 8,
+                    width: 26,
+                    height: 26,
+                    borderRadius: "50%",
+                    border: "none",
+                    background: "rgba(0,0,0,0.55)",
+                    color: "#FFFFFF",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                     cursor: "pointer",
                   }}
                 >
-                  {e}
+                  <X size={14} />
                 </button>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <label
+                htmlFor={`file-upload-${profile.id}`}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  border: `1.5px dashed ${PALETTE.border}`,
+                  borderRadius: 12,
+                  padding: "22px 12px",
+                  marginBottom: 10,
+                  cursor: "pointer",
+                  color: PALETTE.textMuted,
+                }}
+              >
+                <Camera size={20} />
+                <span style={{ fontSize: 12.5, fontFamily: "'Inter', sans-serif" }}>Elegir foto de tu galería</span>
+              </label>
+            )}
+
+            {!imageUrl && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ color: PALETTE.textMuted, fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 6 }}>
+                  O elegí un ícono
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {emojis.map((e) => (
+                    <button
+                      key={e}
+                      onClick={() => setEmoji(e)}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 8,
+                        border: `1px solid ${emoji === e ? PALETTE.amber : PALETTE.border}`,
+                        background: emoji === e ? `${PALETTE.amber}22` : "transparent",
+                        fontSize: 16,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <input
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
@@ -904,7 +1084,7 @@ function FeedScreen({ profile, circulo, onBack, onAddComment, onPublish }) {
               <button
                 onClick={() => {
                   if (caption.trim()) {
-                    onPublish(caption.trim(), emoji, visibility, sharedWith);
+                    onPublish(caption.trim(), emoji, visibility, sharedWith, imageUrl);
                     resetForm();
                   }
                 }}
@@ -959,14 +1139,23 @@ function FeedScreen({ profile, circulo, onBack, onAddComment, onPublish }) {
                     position: "relative",
                     aspectRatio: "1 / 1",
                     borderRadius: 8,
-                    background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)",
+                    overflow: "hidden",
+                    background: post.imageUrl ? "#00000010" : "linear-gradient(160deg,#F0EBE0,#E4DDCF)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     fontSize: 20,
                   }}
                 >
-                  {post.emoji}
+                  {post.imageUrl ? (
+                    <img
+                      src={post.imageUrl}
+                      alt={post.caption}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    post.emoji
+                  )}
                   <div style={{ position: "absolute", bottom: 3, right: 3 }}>
                     <VisibilityTag post={post} iconOnly />
                   </div>
@@ -984,6 +1173,166 @@ function FeedScreen({ profile, circulo, onBack, onAddComment, onPublish }) {
   );
 }
 
+function ChatsScreen({ circulo, chats, onOpenChat }) {
+  return (
+    <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
+      <TopBar title="Chats" />
+      <div style={{ padding: "0 20px" }}>
+        <p style={{ color: PALETTE.textMuted, fontSize: 13, lineHeight: 1.5, marginTop: -6, marginBottom: 20 }}>
+          Conversaciones privadas con tu círculo. Nadie más las ve.
+        </p>
+        {circulo.length === 0 && (
+          <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "40px 10px" }}>
+            Todavía no tenés a nadie en tu círculo.
+          </div>
+        )}
+        {circulo.map((c) => {
+          const messages = chats[c.id] || [];
+          const last = messages[messages.length - 1];
+          return (
+            <button
+              key={c.id}
+              onClick={() => onOpenChat(c.id)}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                background: PALETTE.bgPanel,
+                border: `1px solid ${PALETTE.border}`,
+                borderRadius: 14,
+                padding: "12px 14px",
+                marginBottom: 10,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <Avatar name={c.name} hue={PALETTE.sage} size={42} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: PALETTE.textPrimary, fontSize: 13.5, fontFamily: "'Inter', sans-serif", fontWeight: 600 }}>
+                  {c.name}
+                </div>
+                <div
+                  style={{
+                    color: PALETTE.textMuted,
+                    fontSize: 12,
+                    marginTop: 2,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {last ? (last.from === "me" ? "Vos: " : "") + last.text : "Sin mensajes todavía"}
+                </div>
+              </div>
+              {last && (
+                <span style={{ color: PALETTE.textMuted, fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>
+                  {last.time}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ChatDetailScreen({ contact, messages, onBack, onSend }) {
+  const [text, setText] = useState("");
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <TopBar
+        title={contact.name}
+        onBack={onBack}
+        right={<Avatar name={contact.name} hue={PALETTE.sage} size={32} />}
+      />
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px" }}>
+        {messages.length === 0 && (
+          <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "40px 10px" }}>
+            Todavía no hay mensajes. Decí hola 👋
+          </div>
+        )}
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            style={{
+              display: "flex",
+              justifyContent: m.from === "me" ? "flex-end" : "flex-start",
+              marginBottom: 8,
+            }}
+          >
+            <div
+              style={{
+                maxWidth: "75%",
+                background: m.from === "me" ? PALETTE.amber : PALETTE.bgPanel,
+                color: m.from === "me" ? "#FFFFFF" : PALETTE.textPrimary,
+                border: m.from === "me" ? "none" : `1px solid ${PALETTE.border}`,
+                borderRadius: 14,
+                padding: "9px 12px",
+                fontSize: 13,
+                fontFamily: "'Inter', sans-serif",
+                lineHeight: 1.4,
+              }}
+            >
+              {m.text}
+              <div
+                style={{
+                  fontSize: 9.5,
+                  marginTop: 3,
+                  opacity: 0.7,
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}
+              >
+                {m.time}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          padding: "10px 16px 18px",
+          borderTop: `1px solid ${PALETTE.border}`,
+        }}
+      >
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Escribir un mensaje..."
+          style={{ ...inputStyle, flex: 1 }}
+        />
+        {text.trim() && (
+          <button
+            onClick={() => {
+              onSend(text.trim());
+              setText("");
+            }}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: "50%",
+              border: "none",
+              background: PALETTE.amber,
+              color: "#FFFFFF",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            <Send size={16} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CirculoScreen({ circulo, solicitudes, onAceptar, onRechazar }) {
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
@@ -991,7 +1340,7 @@ function CirculoScreen({ circulo, solicitudes, onAceptar, onRechazar }) {
       <div style={{ padding: "0 20px" }}>
         <p style={{ color: PALETTE.textMuted, fontSize: 13, lineHeight: 1.5, marginTop: -6, marginBottom: 22 }}>
           Nadie entra sin invitación aceptada. Vos administrás quién puede ver
-          los perfiles de tu PicVault.
+          los perfiles de tu Nest.
         </p>
 
         {solicitudes.length > 0 && (
@@ -1154,7 +1503,7 @@ function CuentaScreen({ profiles }) {
         >
           Plan piloto · $1/mes por cuenta familiar. Las cuentas de empresas y
           figuras públicas verificadas se administran aparte, con perfil visible
-          a todo PicVault.
+          a todo Nest.
         </div>
       </div>
     </div>
@@ -1164,6 +1513,7 @@ function CuentaScreen({ profiles }) {
 function BottomNav({ tab, setTab }) {
   const items = [
     { id: "perfiles", icon: Home, label: "Inicio" },
+    { id: "chats", icon: MessagesSquare, label: "Chats" },
     { id: "circulo", icon: Users, label: "Círculo" },
     { id: "cuenta", icon: UserCircle, label: "Cuenta" },
   ];
@@ -1212,15 +1562,36 @@ function BottomNav({ tab, setTab }) {
 
 // ---- app raíz ------------------------------------------------------------
 
-export default function PicVaultPiloto() {
+export default function NestPiloto() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [tab, setTab] = useState("perfiles");
   const [openProfileId, setOpenProfileId] = useState(null);
   const [profiles, setProfiles] = useState(INITIAL_PROFILES);
   const [circulo, setCirculo] = useState(INITIAL_CIRCULO);
   const [solicitudes, setSolicitudes] = useState(INITIAL_SOLICITUDES);
+  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [chats, setChats] = useState(INITIAL_CHATS);
+  const [openChatId, setOpenChatId] = useState(null);
 
   const openProfile = profiles.find((p) => p.id === openProfileId);
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  const openChatContact = circulo.find((c) => c.id === openChatId);
+
+  function openNotifications() {
+    setShowNotifications(true);
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  }
+
+  function sendMessage(contactId, text) {
+    setChats((prev) => ({
+      ...prev,
+      [contactId]: [
+        ...(prev[contactId] || []),
+        { id: `m${Date.now()}`, from: "me", text, time: "ahora" },
+      ],
+    }));
+  }
 
   function addComment(postId, text) {
     setProfiles((prev) =>
@@ -1239,7 +1610,7 @@ export default function PicVaultPiloto() {
     );
   }
 
-  function publishPost(caption, emoji, visibility, sharedWith) {
+  function publishPost(caption, emoji, visibility, sharedWith, imageUrl) {
     setProfiles((prev) =>
       prev.map((p) =>
         p.id !== openProfileId
@@ -1251,6 +1622,7 @@ export default function PicVaultPiloto() {
                   id: `p${Date.now()}`,
                   caption,
                   emoji,
+                  imageUrl,
                   fecha: "ahora",
                   comments: [],
                   visibility,
@@ -1282,6 +1654,7 @@ export default function PicVaultPiloto() {
     const s = solicitudes.find((x) => x.id === id);
     if (s) {
       setCirculo((prev) => [...prev, { id: s.id, name: s.name, parentesco: "Círculo" }]);
+      setChats((prev) => ({ ...prev, [s.id]: prev[s.id] || [] }));
       setSolicitudes((prev) => prev.filter((x) => x.id !== id));
     }
   }
@@ -1320,6 +1693,18 @@ export default function PicVaultPiloto() {
       >
         {!loggedIn ? (
           <LoginScreen onLogin={() => setLoggedIn(true)} />
+        ) : showNotifications ? (
+          <NotificationsScreen
+            notifications={notifications}
+            onBack={() => setShowNotifications(false)}
+          />
+        ) : openChatContact ? (
+          <ChatDetailScreen
+            contact={openChatContact}
+            messages={chats[openChatContact.id] || []}
+            onBack={() => setOpenChatId(null)}
+            onSend={(text) => sendMessage(openChatContact.id, text)}
+          />
         ) : openProfile ? (
           <FeedScreen
             profile={openProfile}
@@ -1335,7 +1720,12 @@ export default function PicVaultPiloto() {
                 profiles={profiles}
                 onOpenProfile={setOpenProfileId}
                 onCreateChild={createChild}
+                unreadCount={unreadCount}
+                onOpenNotifications={openNotifications}
               />
+            )}
+            {tab === "chats" && (
+              <ChatsScreen circulo={circulo} chats={chats} onOpenChat={setOpenChatId} />
             )}
             {tab === "circulo" && (
               <CirculoScreen
