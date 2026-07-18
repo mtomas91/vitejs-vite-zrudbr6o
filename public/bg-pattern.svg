@@ -1,5 +1,5 @@
 <svg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'>
-<g fill='none' stroke='#CAAA5A' stroke-width='0.6' opacity='0.18' stroke-linecap='round' stroke-linejoin='round'>
+<g fill='none' stroke='#CAAA5A' stroke-width='0.8' opacity='0.30' stroke-linecap='round' stroke-linejoin='round'>
 <g transform='translate(10,10) rotate(-12)'>
 <path d='M0 16 L32 0 L24 18 Z'/><path d='M24 18 L32 0 L16 24'/><path d='M24 18 L18 14'/>
 </g>
