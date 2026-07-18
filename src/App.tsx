@@ -47,7 +47,7 @@ const PALETTE = {
 
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');`;
 
-const BG_PATTERN = `url("/background")`;
+const BG_PATTERN = `url("/bg-pattern.svg")`;
 
 const primaryBtnStyle = {
   width: "100%",
@@ -1051,7 +1051,7 @@ function ChatsScreen({ circulo, onOpenChat }) {
   );
 }
 
-function ChatDetailScreen({ contact, myAccountId, onBack }) {
+function ChatDetailScreen({ contact, myAccountId, myName, onBack }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
 
@@ -1069,6 +1069,7 @@ function ChatDetailScreen({ contact, myAccountId, onBack }) {
   async function send() {
     if (!text.trim()) return;
     await supabase.from("messages").insert({ from_id: myAccountId, to_id: contact.id, text: text.trim() });
+    await supabase.from("notifications").insert({ account_id: contact.id, text: "Tenés un nuevo mensaje de " + (myName || "alguien") });
     setText("");
     load();
   }
@@ -1663,7 +1664,7 @@ export default function NestApp() {
             onZoomPhoto={setZoomedPhoto}
           />
         ) : openChatContact ? (
-          <ChatDetailScreen contact={openChatContact} myAccountId={session.user.id} onBack={() => setOpenChatContact(null)} />
+          <ChatDetailScreen contact={openChatContact} myAccountId={session.user.id} myName={account?.name} onBack={() => setOpenChatContact(null)} />
         ) : openProfile ? (
           <FeedScreen
             profile={openProfile}
