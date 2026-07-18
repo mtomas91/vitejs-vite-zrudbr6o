@@ -817,7 +817,7 @@ function ChatDetailScreen({ contact, myAccountId, onBack }) {
 
 // ---- cuenta y nav ---------------------------------------------------------------
 
-function CuentaScreen({ account, myProfile, onOpenConfig, onOpenMyFeed }) {
+function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onOpenMyFeed }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -841,45 +841,116 @@ function CuentaScreen({ account, myProfile, onOpenConfig, onOpenMyFeed }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const childProfiles = profiles.filter((p) => p.tipo === "hijo");
+
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
-      <TopBar
-        title="Tu cuenta"
-        right={
-          <button onClick={onOpenConfig} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: PALETTE.textPrimary }}>
-            <Settings size={20} />
-          </button>
-        }
-      />
-      <div style={{ padding: "0 20px" }}>
-        <button
-          onClick={onOpenMyFeed}
-          style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, background: PALETTE.bgPanel, border: `1px solid ${PALETTE.border}`, borderRadius: 16, padding: 16, marginBottom: 20, cursor: "pointer", textAlign: "left" }}
-        >
-          <Avatar name={account?.name} size={52} />
-          <div style={{ flex: 1 }}>
-            <div style={{ color: PALETTE.textPrimary, fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 17 }}>{account?.name}</div>
-            <div style={{ color: PALETTE.textMuted, fontSize: 12 }}>{account?.email}</div>
-            <div style={{ marginTop: 4 }}><Badge tone="sage"><ShieldCheck size={11} /> Verificada</Badge></div>
-          </div>
+      {/* top bar con nombre a la izq y config a la derecha */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px 0" }}>
+        <span style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 18, color: PALETTE.textPrimary }}>{account?.name || "Tu cuenta"}</span>
+        <button onClick={onOpenConfig} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: PALETTE.textPrimary }}>
+          <Settings size={20} />
         </button>
+      </div>
 
-        <div style={{ color: PALETTE.textMuted, fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 10 }}>
-          Tus recuerdos {posts.length > 0 && `(${posts.length})`}
+      <div style={{ padding: "16px 20px 0" }}>
+        {/* header row: avatar + stats */}
+        <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 16 }}>
+          <Avatar name={account?.name} hue={PALETTE.amber} size={76} />
+          <div style={{ flex: 1, display: "flex", justifyContent: "space-around", textAlign: "center" }}>
+            <div>
+              <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 20, color: PALETTE.textPrimary }}>{posts.length}</div>
+              <div style={{ fontSize: 11, color: PALETTE.textMuted, fontFamily: "'Inter', sans-serif" }}>recuerdos</div>
+            </div>
+            <div>
+              <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 20, color: PALETTE.textPrimary }}>{circulo.length}</div>
+              <div style={{ fontSize: 11, color: PALETTE.textMuted, fontFamily: "'Inter', sans-serif" }}>círculo</div>
+            </div>
+            <div>
+              <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 20, color: PALETTE.textPrimary }}>{childProfiles.length}</div>
+              <div style={{ fontSize: 11, color: PALETTE.textMuted, fontFamily: "'Inter', sans-serif" }}>perfiles</div>
+            </div>
+          </div>
         </div>
 
+        {/* nombre + badge + bio */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+            <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 14, color: PALETTE.textPrimary }}>{account?.name}</span>
+            <Badge tone="sage"><ShieldCheck size={9} /> Verificada</Badge>
+          </div>
+          <div style={{ color: PALETTE.textMuted, fontSize: 12.5, fontFamily: "'Inter', sans-serif", lineHeight: 1.4 }}>
+            {account?.email}
+          </div>
+        </div>
+
+        {/* botones de acción */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+          <button
+            onClick={onOpenMyFeed}
+            style={{
+              flex: 1,
+              background: PALETTE.amber,
+              color: "#FFFFFF",
+              border: "none",
+              borderRadius: 10,
+              padding: "9px 0",
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Guardar recuerdo
+          </button>
+          <button
+            onClick={onOpenConfig}
+            style={{
+              flex: 1,
+              background: PALETTE.bgPanel,
+              color: PALETTE.textPrimary,
+              border: `1px solid ${PALETTE.border}`,
+              borderRadius: 10,
+              padding: "9px 0",
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Editar perfil
+          </button>
+        </div>
+
+        {/* separador con tabs de contenido (solo grilla por ahora) */}
+        <div style={{ display: "flex", borderBottom: `2px solid ${PALETTE.amber}`, marginBottom: 2 }}>
+          <div style={{ flex: 1, textAlign: "center", paddingBottom: 10 }}>
+            <Camera size={18} color={PALETTE.amber} />
+          </div>
+        </div>
+
+        {/* grilla de fotos */}
         {loading && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: 30 }}>Cargando...</div>}
         {!loading && posts.length === 0 && (
-          <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "30px 10px" }}>Todavía no guardaste ningún recuerdo.</div>
+          <div style={{ textAlign: "center", padding: "40px 10px" }}>
+            <Camera size={36} color={PALETTE.border} />
+            <div style={{ color: PALETTE.textMuted, fontSize: 13, marginTop: 10 }}>Todavía no guardaste ningún recuerdo.</div>
+            <button
+              onClick={onOpenMyFeed}
+              style={{ marginTop: 14, background: "none", border: "none", color: PALETTE.amber, fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}
+            >
+              Guardar tu primer recuerdo
+            </button>
+          </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
           {posts.map((post) => (
-            <div key={post.id} style={{ aspectRatio: "1 / 1", borderRadius: 4, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div key={post.id} style={{ aspectRatio: "1 / 1", overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               {post.imageUrl ? (
                 <img src={post.imageUrl} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
-                <Camera size={20} color={PALETTE.textMuted} />
+                <Camera size={18} color={PALETTE.textMuted} />
               )}
             </div>
           ))}
@@ -1049,6 +1120,8 @@ export default function NestApp() {
               <CuentaScreen
                 account={account}
                 myProfile={myProfile}
+                circulo={circulo}
+                profiles={profiles}
                 onOpenConfig={() => setShowConfig(true)}
                 onOpenMyFeed={() => myProfile && setOpenProfileId(myProfile.id)}
               />
