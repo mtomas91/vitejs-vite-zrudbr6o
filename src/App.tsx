@@ -671,9 +671,8 @@ function tiltFor(id) {
   return (sum % 7) - 3; // entre -3 y 3 grados
 }
 
-function PostCard({ post, onComment, header, onHeaderTap }) {
+function PostCard({ post, onComment, header, onHeaderTap, onZoomPhoto }) {
   const [text, setText] = useState("");
-  const [lightboxSrc, setLightboxSrc] = useState(null);
   const deg = tiltFor(post.id);
   return (
     <div
@@ -689,7 +688,6 @@ function PostCard({ post, onComment, header, onHeaderTap }) {
       }}
     >
       <TornEdge />
-      <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       {header && (
         <button onClick={onHeaderTap} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
           <Avatar name={header.name} hue={header.hue} size={26} />
@@ -697,7 +695,7 @@ function PostCard({ post, onComment, header, onHeaderTap }) {
         </button>
       )}
       <div
-        onClick={() => post.imageUrl && setLightboxSrc(post.imageUrl)}
+        onClick={() => post.imageUrl && onZoomPhoto && onZoomPhoto(post.imageUrl)}
         style={{ height: 190, borderRadius: 3, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12, cursor: post.imageUrl ? "pointer" : "default" }}
       >
         {post.imageUrl ? (
@@ -732,7 +730,7 @@ function PostCard({ post, onComment, header, onHeaderTap }) {
   );
 }
 
-function WallScreen({ myAccountId, onOpenNotifications, unreadCount, onLogout, onViewProfile }) {
+function WallScreen({ myAccountId, onOpenNotifications, unreadCount, onLogout, onViewProfile, onZoomPhoto }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -815,6 +813,7 @@ function WallScreen({ myAccountId, onOpenNotifications, unreadCount, onLogout, o
             header={post.header}
             onHeaderTap={() => post.header && onViewProfile && onViewProfile(post.owner_id, post.header)}
             onComment={(text) => addComment(post.id, post.owner_id, text)}
+            onZoomPhoto={onZoomPhoto}
           />
         ))}
       </div>
@@ -1142,14 +1141,13 @@ function ChatDetailScreen({ contact, myAccountId, onBack }) {
 
 // ---- cuenta y nav ---------------------------------------------------------------
 
-function PostDetailScreen({ post, myAccountId, circulo, onBack, onRefresh }) {
+function PostDetailScreen({ post, myAccountId, circulo, onBack, onRefresh, onZoomPhoto }) {
   const [comments, setComments] = useState([]);
   const [text, setText] = useState("");
   const [visibility, setVisibility] = useState(post.visibility);
   const [saving, setSaving] = useState(false);
   const [sharedWith, setSharedWith] = useState([]);
   const [sharesLoaded, setSharesLoaded] = useState(false);
-  const [lightboxSrc, setLightboxSrc] = useState(null);
 
   const isOwner = post.owner_id === myAccountId;
 
@@ -1225,9 +1223,8 @@ function PostDetailScreen({ post, myAccountId, circulo, onBack, onRefresh }) {
           }}
         >
           <TornEdge />
-          <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
           <div
-            onClick={() => post.imageUrl && setLightboxSrc(post.imageUrl)}
+            onClick={() => post.imageUrl && onZoomPhoto && onZoomPhoto(post.imageUrl)}
             style={{ height: 220, borderRadius: 3, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12, cursor: post.imageUrl ? "pointer" : "default" }}
           >
             {post.imageUrl ? (
@@ -1546,7 +1543,8 @@ export default function NestApp() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [openPost, setOpenPost] = useState(null);
-  const [viewingProfile, setViewingProfile] = useState(null); // { ownerId, profileInfo }
+  const [viewingProfile, setViewingProfile] = useState(null);
+  const [zoomedPhoto, setZoomedPhoto] = useState(null);
   const [debugMsg, setDebugMsg] = useState("");
 
   useEffect(() => {
@@ -1652,7 +1650,8 @@ export default function NestApp() {
   return (
     <div style={{ width: "100%", minHeight: "100vh", background: PALETTE.bgDeep, fontFamily: "'Inter', sans-serif" }}>
       <style>{FONT_IMPORT}</style>
-      <div style={{ width: "100%", maxWidth: 480, margin: "0 auto", minHeight: "100vh", background: `${PALETTE.bgDeep} ${BG_PATTERN}`, overflow: "hidden", position: "relative", display: "flex", flexDirection: "column", border: `2px solid ${PALETTE.amber}88`, borderRadius: 24 }}>
+      <div style={{ width: "100%", maxWidth: 480, margin: "0 auto", minHeight: "100vh", backgroundColor: PALETTE.bgDeep, backgroundImage: BG_PATTERN, backgroundRepeat: "repeat", overflow: "hidden", position: "relative", display: "flex", flexDirection: "column", border: `2px solid ${PALETTE.amber}88`, borderRadius: 24 }}>
+        <Lightbox src={zoomedPhoto} onClose={() => setZoomedPhoto(null)} />
         {debugMsg && (
           <div style={{ background: "#FFF3CD", padding: "6px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#856404", borderBottom: "1px solid #FFE69C" }}>
             {debugMsg}
@@ -1702,6 +1701,7 @@ export default function NestApp() {
             circulo={circulo}
             onBack={() => setOpenPost(null)}
             onRefresh={loadAll}
+            onZoomPhoto={setZoomedPhoto}
           />
         ) : openChatContact ? (
           <ChatDetailScreen contact={openChatContact} myAccountId={session.user.id} onBack={() => setOpenChatContact(null)} />
@@ -1722,6 +1722,7 @@ export default function NestApp() {
                 unreadCount={solicitudes.length + notifications.length}
                 onLogout={handleLogout}
                 onViewProfile={(ownerId, profileInfo) => setViewingProfile({ ownerId, profileInfo })}
+                onZoomPhoto={setZoomedPhoto}
               />
             )}
             {tab === "chats" && <ChatsScreen circulo={circulo} onOpenChat={setOpenChatContact} />}
