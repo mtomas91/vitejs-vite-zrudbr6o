@@ -411,7 +411,7 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId }) {
       (postsData || []).map(async (post) => {
         let imageUrl = null;
         if (post.image_url) {
-          const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 3600);
+          const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 900);
           imageUrl = signed?.signedUrl || null;
         }
         const { data: comments } = await supabase
@@ -592,7 +592,7 @@ function tiltFor(id) {
   return (sum % 7) - 3; // entre -3 y 3 grados
 }
 
-function PostCard({ post, onComment, header }) {
+function PostCard({ post, onComment, header, onHeaderTap }) {
   const [text, setText] = useState("");
   const deg = tiltFor(post.id);
   return (
@@ -610,10 +610,10 @@ function PostCard({ post, onComment, header }) {
     >
       <TornEdge />
       {header && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <button onClick={onHeaderTap} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
           <Avatar name={header.name} hue={header.hue} size={26} />
           <span style={{ fontSize: 12.5, fontFamily: "'Inter', sans-serif", fontWeight: 600, color: PALETTE.textPrimary }}>{header.name}</span>
-        </div>
+        </button>
       )}
       <div style={{ height: 190, borderRadius: 3, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
         {post.imageUrl ? (
@@ -648,22 +648,24 @@ function PostCard({ post, onComment, header }) {
   );
 }
 
-function WallScreen({ myAccountId, onOpenNotifications, unreadCount, onLogout }) {
+function WallScreen({ myAccountId, onOpenNotifications, unreadCount, onLogout, onViewProfile }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: postsData } = await supabase
       .from("posts")
       .select("*")
+      .gte("created_at", since24h)
       .order("created_at", { ascending: false })
       .limit(40);
 
     const profileIds = [...new Set((postsData || []).map((p) => p.profile_id))];
     let profilesMap = {};
     if (profileIds.length > 0) {
-      const { data: profs } = await supabase.from("profiles").select("id,name,hue").in("id", profileIds);
+      const { data: profs } = await supabase.from("profiles").select("id,name,hue,owner_id").in("id", profileIds);
       profilesMap = Object.fromEntries((profs || []).map((p) => [p.id, p]));
     }
 
@@ -671,7 +673,7 @@ function WallScreen({ myAccountId, onOpenNotifications, unreadCount, onLogout })
       (postsData || []).map(async (post) => {
         let imageUrl = null;
         if (post.image_url) {
-          const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 3600);
+          const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 900);
           imageUrl = signed?.signedUrl || null;
         }
         const { data: comments } = await supabase.from("comments").select("*").eq("post_id", post.id).order("created_at", { ascending: true });
@@ -684,9 +686,13 @@ function WallScreen({ myAccountId, onOpenNotifications, unreadCount, onLogout })
 
   useEffect(() => { load(); }, [load]);
 
-  async function addComment(postId, text) {
+  async function addComment(postId, postOwnerId, text) {
     if (!text.trim()) return;
     await supabase.from("comments").insert({ post_id: postId, author_id: myAccountId, author_name: "Vos", text: text.trim() });
+    // Crear notificación para el dueño del post (si no sos vos mismo)
+    if (postOwnerId !== myAccountId) {
+      await supabase.from("notifications").insert({ account_id: postOwnerId, text: "Alguien comentó en tu recuerdo" });
+    }
     load();
   }
 
@@ -709,14 +715,23 @@ function WallScreen({ myAccountId, onOpenNotifications, unreadCount, onLogout })
         }
       />
       <div style={{ padding: "6px 20px 0" }}>
+        <button onClick={load} style={{ width: "100%", background: PALETTE.bgPanel, border: `1px solid ${PALETTE.border}`, borderRadius: 10, padding: "8px 0", marginBottom: 14, cursor: "pointer", color: PALETTE.textMuted, fontSize: 12, fontFamily: "'Inter', sans-serif" }}>
+          ↻ Actualizar
+        </button>
         {loading && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: 30 }}>Cargando...</div>}
         {!loading && posts.length === 0 && (
-          <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "40px 10px" }}>
-            Todavía no hay nada compartido con vos. Cuando alguien de tu círculo publique algo público o te lo comparta, va a aparecer acá.
+          <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "40px 10px", lineHeight: 1.6 }}>
+            No hay recuerdos de las últimas 24 horas. Los recuerdos aparecen acá por un día — después quedan solo en el perfil de quien los publicó.
           </div>
         )}
         {posts.map((post) => (
-          <PostCard key={post.id} post={post} header={post.header} onComment={(text) => addComment(post.id, text)} />
+          <PostCard
+            key={post.id}
+            post={post}
+            header={post.header}
+            onHeaderTap={() => post.header && onViewProfile && onViewProfile(post.owner_id, post.header)}
+            onComment={(text) => addComment(post.id, post.owner_id, text)}
+          />
         ))}
       </div>
     </div>
@@ -759,6 +774,12 @@ function CirculoScreen({ myAccountId, circulo, solicitudes, onRefresh }) {
 
   async function changeCategory(contactId, newCat) {
     await supabase.from("circle_connections").update({ category: newCat })
+      .or(`and(account_id.eq.${myAccountId},contact_id.eq.${contactId}),and(account_id.eq.${contactId},contact_id.eq.${myAccountId})`);
+    onRefresh();
+  }
+
+  async function removeContact(contactId) {
+    await supabase.from("circle_connections").delete()
       .or(`and(account_id.eq.${myAccountId},contact_id.eq.${contactId}),and(account_id.eq.${contactId},contact_id.eq.${myAccountId})`);
     onRefresh();
   }
@@ -877,6 +898,9 @@ function CirculoScreen({ myAccountId, circulo, solicitudes, onRefresh }) {
                         <option value="all_family">All Family</option>
                         <option value="friends">Friends</option>
                       </select>
+                      <button onClick={() => removeContact(c.id)} style={{ width: 28, height: 28, borderRadius: "50%", border: `1px solid #d4544644`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                        <X size={13} color="#d45446" />
+                      </button>
                     </div>
                   ))
                 )
@@ -884,6 +908,83 @@ function CirculoScreen({ myAccountId, circulo, solicitudes, onRefresh }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ---- ver perfil de otro -------------------------------------------------------
+
+function OtherProfileScreen({ ownerId, profileInfo, onBack }) {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data: profs } = await supabase.from("profiles").select("id").eq("owner_id", ownerId).eq("tipo", "adulto").limit(1);
+    const profId = profs?.[0]?.id;
+    if (!profId) { setLoading(false); return; }
+    const { data } = await supabase.from("posts").select("*").eq("profile_id", profId).order("created_at", { ascending: false });
+    const withUrls = await Promise.all(
+      (data || []).map(async (post) => {
+        let imageUrl = null;
+        if (post.image_url) {
+          const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 900);
+          imageUrl = signed?.signedUrl || null;
+        }
+        return { ...post, imageUrl };
+      })
+    );
+    setPosts(withUrls);
+    setLoading(false);
+  }, [ownerId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", paddingBottom: 20 }}>
+      <TopBar title={profileInfo?.name || "Perfil"} onBack={onBack} />
+      <div style={{ padding: "0 20px" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 20 }}>
+          <Avatar name={profileInfo?.name} hue={profileInfo?.hue || PALETTE.sage} size={72} />
+          <div style={{ marginTop: 10, fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 16, color: PALETTE.textPrimary }}>{profileInfo?.name}</div>
+        </div>
+
+        {loading && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: 30 }}>Cargando...</div>}
+        {!loading && posts.length === 0 && (
+          <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "30px 10px" }}>No hay recuerdos visibles.</div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, padding: "0 4px" }}>
+          {posts.map((post) => {
+            const deg = tiltFor(post.id);
+            return (
+              <div
+                key={post.id}
+                style={{
+                  position: "relative",
+                  background: PALETTE.bgPanel,
+                  border: `1px solid ${PALETTE.border}`,
+                  borderRadius: 3,
+                  padding: 4,
+                  paddingBottom: 20,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+                  transform: `rotate(${deg}deg)`,
+                  aspectRatio: "3 / 4",
+                  overflow: "hidden",
+                }}
+              >
+                {post.imageUrl ? (
+                  <img src={post.imageUrl} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 2 }} />
+                ) : (
+                  <div style={{ width: "100%", height: "100%", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Camera size={16} color={PALETTE.textMuted} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -1167,7 +1268,7 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
 
     // Cargar avatar
     if (account?.avatar_url) {
-      const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(account.avatar_url, 3600);
+      const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(account.avatar_url, 900);
       setAvatarUrl(signed?.signedUrl || null);
     }
 
@@ -1176,7 +1277,7 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
       (data || []).map(async (post) => {
         let imageUrl = null;
         if (post.image_url) {
-          const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 3600);
+          const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 900);
           imageUrl = signed?.signedUrl || null;
         }
         return { ...post, imageUrl };
@@ -1196,7 +1297,7 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
     if (upErr) return;
     await supabase.from("accounts").update({ avatar_url: path }).eq("id", account.id);
     if (onRefreshAccount) onRefreshAccount();
-    const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600);
+    const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 900);
     setAvatarUrl(signed?.signedUrl || null);
   }
 
@@ -1349,12 +1450,14 @@ export default function NestApp() {
   const [profiles, setProfiles] = useState([]);
   const [circulo, setCirculo] = useState([]);
   const [solicitudes, setSolicitudes] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [tab, setTab] = useState("wall");
   const [openProfileId, setOpenProfileId] = useState(null);
   const [openChatContact, setOpenChatContact] = useState(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [openPost, setOpenPost] = useState(null);
+  const [viewingProfile, setViewingProfile] = useState(null); // { ownerId, profileInfo }
   const [debugMsg, setDebugMsg] = useState("");
 
   useEffect(() => {
@@ -1423,6 +1526,10 @@ export default function NestApp() {
     } else {
       setSolicitudes([]);
     }
+
+    // Cargar notificaciones reales
+    const { data: notifs } = await supabase.from("notifications").select("*").eq("account_id", uid).eq("read", false).order("created_at", { ascending: false }).limit(20);
+    setNotifications(notifs || []);
   }, [session]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -1466,20 +1573,32 @@ export default function NestApp() {
           <AuthScreen onAuthed={() => {}} />
         ) : showNotifications ? (
           <div style={{ flex: 1, overflowY: "auto" }}>
-            <TopBar title="Solicitudes" onBack={() => setShowNotifications(false)} />
+            <TopBar title="Notificaciones" onBack={() => { setShowNotifications(false); loadAll(); }} />
             <div style={{ padding: "0 20px" }}>
-              {solicitudes.length === 0 && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "40px 10px" }}>No tenés solicitudes pendientes.</div>}
+              {solicitudes.length === 0 && notifications.length === 0 && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "40px 10px" }}>No tenés notificaciones.</div>}
               {solicitudes.map((s) => (
-                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: PALETTE.bgPanel, border: `1px solid ${PALETTE.border}`, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }}>
+                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: PALETTE.bgPanel, border: `1px solid ${PALETTE.amber}33`, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }}>
                   <Avatar name={s.fromName} hue={PALETTE.amber} size={40} />
                   <div style={{ flex: 1 }}>
                     <div style={{ color: PALETTE.textPrimary, fontSize: 13.5, fontFamily: "'Inter', sans-serif", fontWeight: 600 }}>{s.fromName}</div>
-                    <div style={{ color: PALETTE.textMuted, fontSize: 11.5 }}>{s.fromEmail}</div>
+                    <div style={{ color: PALETTE.textMuted, fontSize: 11.5 }}>Quiere unirse a tu círculo</div>
                   </div>
+                </div>
+              ))}
+              {notifications.map((n) => (
+                <div key={n.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 4px", borderBottom: `1px solid ${PALETTE.border}` }}>
+                  <Bell size={16} color={PALETTE.amber} />
+                  <div style={{ flex: 1, color: PALETTE.textPrimary, fontSize: 13, fontFamily: "'Inter', sans-serif" }}>{n.text}</div>
                 </div>
               ))}
             </div>
           </div>
+        ) : viewingProfile ? (
+          <OtherProfileScreen
+            ownerId={viewingProfile.ownerId}
+            profileInfo={viewingProfile.profileInfo}
+            onBack={() => setViewingProfile(null)}
+          />
         ) : showConfig ? (
           <ConfiguracionScreen
             profiles={profiles}
@@ -1511,8 +1630,9 @@ export default function NestApp() {
               <WallScreen
                 myAccountId={session.user.id}
                 onOpenNotifications={() => setShowNotifications(true)}
-                unreadCount={solicitudes.length}
+                unreadCount={solicitudes.length + notifications.length}
                 onLogout={handleLogout}
+                onViewProfile={(ownerId, profileInfo) => setViewingProfile({ ownerId, profileInfo })}
               />
             )}
             {tab === "chats" && <ChatsScreen circulo={circulo} onOpenChat={setOpenChatContact} />}
