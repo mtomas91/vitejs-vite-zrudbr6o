@@ -1,0 +1,25 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'>
+<g fill='none' stroke='#CAAA5A' stroke-width='0.6' opacity='0.18' stroke-linecap='round' stroke-linejoin='round'>
+<g transform='translate(10,10) rotate(-12)'>
+<path d='M0 16 L32 0 L24 18 Z'/><path d='M24 18 L32 0 L16 24'/><path d='M24 18 L18 14'/>
+</g>
+<g transform='translate(90,5)'>
+<rect x='0' y='8' width='28' height='20' rx='4'/><circle cx='14' cy='18' r='6'/><rect x='8' y='2' width='10' height='7' rx='2'/><circle cx='14' cy='18' r='2.5'/>
+</g>
+<g transform='translate(40,60)'>
+<ellipse cx='16' cy='16' rx='18' ry='12'/><circle cx='10' cy='14' r='2.5'/><circle cx='18' cy='12' r='2'/><circle cx='14' cy='18' r='1.8'/><path d='M6 10 Q12 4 22 8'/>
+</g>
+<g transform='translate(130,55) rotate(15)'>
+<path d='M0 16 L32 0 L24 18 Z'/><path d='M24 18 L32 0 L16 24'/>
+</g>
+<g transform='translate(10,120)'>
+<rect x='0' y='8' width='28' height='20' rx='4'/><circle cx='14' cy='18' r='6'/><rect x='8' y='2' width='10' height='7' rx='2'/><circle cx='14' cy='18' r='2.5'/>
+</g>
+<g transform='translate(90,115)'>
+<ellipse cx='16' cy='16' rx='18' ry='12'/><circle cx='11' cy='14' r='2.5'/><circle cx='19' cy='13' r='2'/><path d='M7 11 Q14 5 23 9'/>
+</g>
+<g transform='translate(140,120) rotate(-8)'>
+<path d='M0 16 L32 0 L24 18 Z'/><path d='M24 18 L32 0 L16 24'/><path d='M24 18 L18 14'/>
+</g>
+</g>
+</svg>
