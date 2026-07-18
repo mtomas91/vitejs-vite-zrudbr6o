@@ -47,48 +47,7 @@ const PALETTE = {
 
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');`;
 
-const BG_PATTERN = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'>
-  <g fill='none' stroke='%23CAAA5A' stroke-width='0.7' opacity='0.13' stroke-linecap='round' stroke-linejoin='round'>
-    <!-- paper airplane -->
-    <g transform='translate(20,20) rotate(-15)'>
-      <path d='M0 12 L24 0 L18 14 Z'/>
-      <path d='M18 14 L24 0 L12 18'/>
-      <path d='M18 14 L14 11'/>
-    </g>
-    <!-- camera -->
-    <g transform='translate(110,15)'>
-      <rect x='0' y='6' width='22' height='16' rx='3'/>
-      <circle cx='11' cy='14' r='5'/>
-      <rect x='7' y='2' width='8' height='5' rx='1'/>
-    </g>
-    <!-- plate of food -->
-    <g transform='translate(60,90)'>
-      <ellipse cx='14' cy='14' rx='14' ry='10'/>
-      <path d='M6 12 Q10 6 14 8 Q18 6 22 12'/>
-      <circle cx='10' cy='11' r='1.5'/>
-      <circle cx='17' cy='10' r='1.5'/>
-    </g>
-    <!-- paper airplane 2 -->
-    <g transform='translate(130,100) rotate(25)'>
-      <path d='M0 12 L24 0 L18 14 Z'/>
-      <path d='M18 14 L24 0 L12 18'/>
-      <path d='M18 14 L14 11'/>
-    </g>
-    <!-- camera 2 -->
-    <g transform='translate(15,130)'>
-      <rect x='0' y='6' width='22' height='16' rx='3'/>
-      <circle cx='11' cy='14' r='5'/>
-      <rect x='7' y='2' width='8' height='5' rx='1'/>
-    </g>
-    <!-- plate 2 -->
-    <g transform='translate(100,150)'>
-      <ellipse cx='14' cy='14' rx='14' ry='10'/>
-      <path d='M6 12 Q10 6 14 8 Q18 6 22 12'/>
-      <circle cx='10' cy='11' r='1.5'/>
-      <circle cx='17' cy='10' r='1.5'/>
-    </g>
-  </g>
-</svg>`)}")`;
+const BG_PATTERN = `url("/bg-pattern.svg")`;
 
 const primaryBtnStyle = {
   width: "100%",
