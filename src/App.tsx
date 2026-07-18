@@ -957,11 +957,13 @@ function ChatDetailScreen({ contact, myAccountId, onBack }) {
 
 // ---- cuenta y nav ---------------------------------------------------------------
 
-function PostDetailScreen({ post, myAccountId, onBack, onRefresh }) {
+function PostDetailScreen({ post, myAccountId, circulo, onBack, onRefresh }) {
   const [comments, setComments] = useState([]);
   const [text, setText] = useState("");
   const [visibility, setVisibility] = useState(post.visibility);
   const [saving, setSaving] = useState(false);
+  const [sharedWith, setSharedWith] = useState([]);
+  const [sharesLoaded, setSharesLoaded] = useState(false);
 
   const isOwner = post.owner_id === myAccountId;
 
@@ -970,7 +972,13 @@ function PostDetailScreen({ post, myAccountId, onBack, onRefresh }) {
     setComments(data || []);
   }, [post.id]);
 
-  useEffect(() => { loadComments(); }, [loadComments]);
+  const loadShares = useCallback(async () => {
+    const { data } = await supabase.from("post_shares").select("account_id").eq("post_id", post.id);
+    setSharedWith((data || []).map((s) => s.account_id));
+    setSharesLoaded(true);
+  }, [post.id]);
+
+  useEffect(() => { loadComments(); loadShares(); }, [loadComments, loadShares]);
 
   async function addComment() {
     if (!text.trim()) return;
@@ -984,6 +992,17 @@ function PostDetailScreen({ post, myAccountId, onBack, onRefresh }) {
     await supabase.from("posts").update({ visibility: newVis }).eq("id", post.id);
     setVisibility(newVis);
     setSaving(false);
+  }
+
+  async function toggleShare(accountId) {
+    const isShared = sharedWith.includes(accountId);
+    if (isShared) {
+      await supabase.from("post_shares").delete().eq("post_id", post.id).eq("account_id", accountId);
+      setSharedWith((prev) => prev.filter((id) => id !== accountId));
+    } else {
+      await supabase.from("post_shares").insert({ post_id: post.id, account_id: accountId });
+      setSharedWith((prev) => [...prev, accountId]);
+    }
   }
 
   async function deletePost() {
@@ -1065,6 +1084,28 @@ function PostDetailScreen({ post, myAccountId, onBack, onRefresh }) {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {isOwner && visibility === "especifico" && sharesLoaded && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ color: PALETTE.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 8 }}>Compartido con</div>
+            {circulo.length === 0 ? (
+              <div style={{ color: PALETTE.textMuted, fontSize: 12, fontStyle: "italic" }}>No tenés contactos en tu círculo todavía.</div>
+            ) : (
+              circulo.map((c) => {
+                const checked = sharedWith.includes(c.id);
+                return (
+                  <button key={c.id} onClick={() => toggleShare(c.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: "transparent", border: "none", padding: "7px 4px", cursor: "pointer", textAlign: "left" }}>
+                    <Avatar name={c.name} hue={PALETTE.sage} size={28} />
+                    <span style={{ flex: 1, color: PALETTE.textPrimary, fontSize: 12.5, fontFamily: "'Inter', sans-serif" }}>{c.name}</span>
+                    <div style={{ width: 16, height: 16, borderRadius: 4, border: `1.5px solid ${checked ? PALETTE.amber : PALETTE.border}`, background: checked ? PALETTE.amber : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {checked && <Check size={11} color="#FFFFFF" />}
+                    </div>
+                  </button>
+                );
+              })
+            )}
           </div>
         )}
 
@@ -1450,6 +1491,7 @@ export default function NestApp() {
           <PostDetailScreen
             post={openPost}
             myAccountId={session.user.id}
+            circulo={circulo}
             onBack={() => setOpenPost(null)}
             onRefresh={loadAll}
           />
