@@ -380,6 +380,7 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId }) {
   const [visibility, setVisibility] = useState("privado");
   const [sharedWith, setSharedWith] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [publishError, setPublishError] = useState("");
 
   const loadPosts = useCallback(async () => {
     setLoading(true);
@@ -421,23 +422,41 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId }) {
   }
 
   async function handlePublish() {
-    if (!caption.trim()) return;
+    if (!caption.trim()) { setPublishError("Escribí una descripción para el recuerdo."); return; }
+    setPublishError("");
     setUploading(true);
+
     let imagePath = null;
     if (file) {
       const path = `${myAccountId}/${profile.id}/${Date.now()}-${file.name}`;
       const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file);
-      if (!upErr) imagePath = path;
+      if (upErr) {
+        setPublishError("Error subiendo foto: " + upErr.message);
+        setUploading(false);
+        return;
+      }
+      imagePath = path;
     }
-    const { data: inserted, error } = await supabase
+
+    const { data: inserted, error: postErr } = await supabase
       .from("posts")
       .insert({ profile_id: profile.id, owner_id: myAccountId, caption: caption.trim(), image_url: imagePath, visibility })
       .select()
       .single();
 
-    if (!error && inserted && visibility === "especifico" && sharedWith.length > 0) {
-      await supabase.from("post_shares").insert(sharedWith.map((accountId) => ({ post_id: inserted.id, account_id: accountId })));
+    if (postErr) {
+      setPublishError("Error guardando recuerdo: " + postErr.message);
+      setUploading(false);
+      return;
     }
+
+    if (inserted && visibility === "especifico" && sharedWith.length > 0) {
+      const { error: shareErr } = await supabase.from("post_shares").insert(sharedWith.map((accountId) => ({ post_id: inserted.id, account_id: accountId })));
+      if (shareErr) {
+        setPublishError("Recuerdo guardado, pero falló compartir: " + shareErr.message);
+      }
+    }
+
     setUploading(false);
     resetForm();
     loadPosts();
@@ -514,6 +533,7 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId }) {
               </div>
             )}
 
+            {publishError && <p style={{ color: "#b04545", fontSize: 12, marginBottom: 4 }}>{publishError}</p>}
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <button onClick={resetForm} style={{ ...secondaryBtnStyle, flex: 1 }}>Cancelar</button>
               <button onClick={handlePublish} disabled={uploading} style={{ ...primaryBtnStyle, flex: 1, padding: "12px 0" }}>
