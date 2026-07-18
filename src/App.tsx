@@ -1267,9 +1267,9 @@ export default function NestApp() {
   }
 
   return (
-    <div style={{ width: "100%", minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", background: "#E7E2D8", fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ width: "100%", minHeight: "100vh", background: PALETTE.bgDeep, fontFamily: "'Inter', sans-serif" }}>
       <style>{FONT_IMPORT}</style>
-      <div style={{ width: 400, height: 780, maxHeight: "94vh", background: PALETTE.bgDeep, borderRadius: 36, border: "6px solid #05070A", boxShadow: "0 30px 80px rgba(0,0,0,0.6)", overflow: "hidden", position: "relative", display: "flex", flexDirection: "column" }}>
+      <div style={{ width: "100%", maxWidth: 480, margin: "0 auto", minHeight: "100vh", background: PALETTE.bgDeep, overflow: "hidden", position: "relative", display: "flex", flexDirection: "column" }}>
         {debugMsg && (
           <div style={{ background: "#FFF3CD", padding: "6px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#856404", borderBottom: "1px solid #FFE69C" }}>
             {debugMsg}
