@@ -1,0 +1,17 @@
+{
+  "name": "Nest",
+  "short_name": "Nest",
+  "description": "For friends and family",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#CAAA5A",
+  "icons": [
+    {
+      "src": "/nest-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
