@@ -21,6 +21,8 @@ import {
   Search,
   LogOut,
   Settings,
+  Image as ImageIcon,
+  Trash2,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -490,11 +492,23 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId }) {
           </button>
         ) : (
           <div style={{ background: PALETTE.bgPanel, border: `1px solid ${PALETTE.border}`, borderRadius: 16, padding: 16, marginBottom: 20 }}>
-            <input type="file" accept="image/*" id="file-upload" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ display: "none" }} />
-            <label htmlFor="file-upload" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, border: `1.5px dashed ${PALETTE.border}`, borderRadius: 12, padding: "18px 12px", marginBottom: 10, cursor: "pointer", color: PALETTE.textMuted }}>
-              <Camera size={20} />
-              <span style={{ fontSize: 12.5, fontFamily: "'Inter', sans-serif" }}>{file ? file.name : "Elegir foto de tu galería"}</span>
-            </label>
+            <input type="file" accept="image/*" capture="environment" id="file-camera" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ display: "none" }} />
+            <input type="file" accept="image/*" id="file-gallery" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ display: "none" }} />
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              <label htmlFor="file-camera" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, border: `1.5px dashed ${PALETTE.border}`, borderRadius: 12, padding: "16px 8px", cursor: "pointer", color: PALETTE.textMuted }}>
+                <Camera size={20} />
+                <span style={{ fontSize: 11, fontFamily: "'Inter', sans-serif" }}>Sacar foto</span>
+              </label>
+              <label htmlFor="file-gallery" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, border: `1.5px dashed ${PALETTE.border}`, borderRadius: 12, padding: "16px 8px", cursor: "pointer", color: PALETTE.textMuted }}>
+                <ImageIcon size={20} />
+                <span style={{ fontSize: 11, fontFamily: "'Inter', sans-serif" }}>Galería</span>
+              </label>
+            </div>
+            {file && (
+              <div style={{ fontSize: 12, color: PALETTE.sage, marginBottom: 8, fontFamily: "'Inter', sans-serif" }}>
+                📎 {file.name}
+              </div>
+            )}
             <input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="¿Qué momento querés guardar?" style={inputStyle} />
 
             <div style={{ color: PALETTE.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", margin: "16px 0 8px" }}>¿Quién puede verlo?</div>
@@ -628,7 +642,6 @@ function WallScreen({ myAccountId, onOpenNotifications, unreadCount, onLogout })
     const { data: postsData } = await supabase
       .from("posts")
       .select("*")
-      .neq("owner_id", myAccountId)
       .order("created_at", { ascending: false })
       .limit(40);
 
@@ -847,7 +860,165 @@ function ChatDetailScreen({ contact, myAccountId, onBack }) {
 
 // ---- cuenta y nav ---------------------------------------------------------------
 
-function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onOpenMyFeed }) {
+function PostDetailScreen({ post, myAccountId, onBack, onRefresh }) {
+  const [comments, setComments] = useState([]);
+  const [text, setText] = useState("");
+  const [visibility, setVisibility] = useState(post.visibility);
+  const [saving, setSaving] = useState(false);
+
+  const isOwner = post.owner_id === myAccountId;
+
+  const loadComments = useCallback(async () => {
+    const { data } = await supabase.from("comments").select("*").eq("post_id", post.id).order("created_at", { ascending: true });
+    setComments(data || []);
+  }, [post.id]);
+
+  useEffect(() => { loadComments(); }, [loadComments]);
+
+  async function addComment() {
+    if (!text.trim()) return;
+    await supabase.from("comments").insert({ post_id: post.id, author_id: myAccountId, author_name: "Vos", text: text.trim() });
+    setText("");
+    loadComments();
+  }
+
+  async function changeVisibility(newVis) {
+    setSaving(true);
+    await supabase.from("posts").update({ visibility: newVis }).eq("id", post.id);
+    setVisibility(newVis);
+    setSaving(false);
+  }
+
+  async function deletePost() {
+    if (post.image_url) {
+      await supabase.storage.from(BUCKET).remove([post.image_url]);
+    }
+    await supabase.from("comments").delete().eq("post_id", post.id);
+    await supabase.from("post_shares").delete().eq("post_id", post.id);
+    await supabase.from("posts").delete().eq("id", post.id);
+    onRefresh();
+    onBack();
+  }
+
+  const visOptions = [
+    { id: "privado", label: "Solo yo", icon: Lock },
+    { id: "especifico", label: "Algunos", icon: UserCheck },
+    { id: "publico", label: "Círculo", icon: Globe },
+  ];
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+      <TopBar title="Recuerdo" onBack={onBack} />
+      <div style={{ padding: "0 16px", flex: 1 }}>
+        <div
+          style={{
+            position: "relative",
+            background: PALETTE.bgPanel,
+            border: `1px solid ${PALETTE.border}`,
+            borderRadius: 4,
+            padding: "16px 16px 14px",
+            marginBottom: 16,
+            boxShadow: "0 10px 22px rgba(0,0,0,0.14)",
+            transform: `rotate(${tiltFor(post.id)}deg)`,
+          }}
+        >
+          <TornEdge />
+          <div style={{ height: 220, borderRadius: 3, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+            {post.imageUrl ? (
+              <img src={post.imageUrl} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <Camera size={32} color={PALETTE.textMuted} />
+            )}
+          </div>
+          <p style={{ color: PALETTE.textPrimary, fontFamily: "'Inter', sans-serif", fontSize: 14, margin: "0 0 6px" }}>{post.caption}</p>
+          <VisibilityTag visibility={visibility} />
+        </div>
+
+        {isOwner && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ color: PALETTE.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 8 }}>Cambiar visibilidad</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {visOptions.map((opt) => {
+                const Icon = opt.icon;
+                const active = visibility === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => changeVisibility(opt.id)}
+                    disabled={saving}
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "10px 6px",
+                      borderRadius: 10,
+                      border: `1px solid ${active ? PALETTE.amber : PALETTE.border}`,
+                      background: active ? `${PALETTE.amber}14` : "transparent",
+                      cursor: "pointer",
+                      color: active ? PALETTE.amber : PALETTE.textMuted,
+                      fontSize: 11,
+                      fontFamily: "'Inter', sans-serif",
+                    }}
+                  >
+                    <Icon size={16} />
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ color: PALETTE.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 8 }}>Comentarios ({comments.length})</div>
+          {comments.map((c) => (
+            <div key={c.id} style={{ fontSize: 13, color: PALETTE.textMuted, marginBottom: 6 }}>
+              <span style={{ color: PALETTE.sage, fontWeight: 600 }}>{c.author_name}: </span>{c.text}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
+          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Comentar..." style={{ ...inputStyle, flex: 1 }} />
+          {text.trim() && (
+            <button onClick={addComment} style={{ width: 38, height: 38, borderRadius: "50%", border: "none", background: PALETTE.amber, color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <Send size={16} />
+            </button>
+          )}
+        </div>
+
+        {isOwner && (
+          <button
+            onClick={deletePost}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              background: "transparent",
+              border: `1px solid #d4544655`,
+              borderRadius: 12,
+              padding: "12px 0",
+              color: "#d45446",
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 500,
+              fontSize: 13,
+              cursor: "pointer",
+              marginBottom: 20,
+            }}
+          >
+            <Trash2 size={16} /> Eliminar recuerdo
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onOpenMyFeed, onOpenPost }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -927,16 +1098,37 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
-          {posts.map((post) => (
-            <div key={post.id} style={{ aspectRatio: "1 / 1", overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {post.imageUrl ? (
-                <img src={post.imageUrl} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              ) : (
-                <Camera size={18} color={PALETTE.textMuted} />
-              )}
-            </div>
-          ))}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, padding: "0 4px" }}>
+          {posts.map((post) => {
+            const deg = tiltFor(post.id);
+            return (
+              <button
+                key={post.id}
+                onClick={() => onOpenPost && onOpenPost(post)}
+                style={{
+                  position: "relative",
+                  background: PALETTE.bgPanel,
+                  border: `1px solid ${PALETTE.border}`,
+                  borderRadius: 3,
+                  padding: 4,
+                  paddingBottom: 20,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+                  transform: `rotate(${deg}deg)`,
+                  cursor: "pointer",
+                  aspectRatio: "3 / 4",
+                  overflow: "hidden",
+                }}
+              >
+                {post.imageUrl ? (
+                  <img src={post.imageUrl} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 2 }} />
+                ) : (
+                  <div style={{ width: "100%", height: "100%", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Camera size={16} color={PALETTE.textMuted} />
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -979,6 +1171,7 @@ export default function NestApp() {
   const [openChatContact, setOpenChatContact] = useState(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [openPost, setOpenPost] = useState(null);
   const [debugMsg, setDebugMsg] = useState("");
 
   useEffect(() => {
@@ -1107,6 +1300,13 @@ export default function NestApp() {
             onCreateChild={createChild}
             onBack={() => setShowConfig(false)}
           />
+        ) : openPost ? (
+          <PostDetailScreen
+            post={openPost}
+            myAccountId={session.user.id}
+            onBack={() => setOpenPost(null)}
+            onRefresh={loadAll}
+          />
         ) : openChatContact ? (
           <ChatDetailScreen contact={openChatContact} myAccountId={session.user.id} onBack={() => setOpenChatContact(null)} />
         ) : openProfile ? (
@@ -1139,6 +1339,7 @@ export default function NestApp() {
                 profiles={profiles}
                 onOpenConfig={() => setShowConfig(true)}
                 onOpenMyFeed={() => myProfile && setOpenProfileId(myProfile.id)}
+                onOpenPost={setOpenPost}
               />
             )}
             <BottomNav tab={tab} setTab={setTab} />
