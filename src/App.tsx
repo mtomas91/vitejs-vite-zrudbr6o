@@ -959,6 +959,7 @@ export default function NestApp() {
   const [openChatContact, setOpenChatContact] = useState(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [debugMsg, setDebugMsg] = useState("");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -967,19 +968,36 @@ export default function NestApp() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    if (!session?.user) return;
+    if (!session?.user) { setDebugMsg("No hay sesión activa"); return; }
     const uid = session.user.id;
+    setDebugMsg("Sesión OK. UID: " + uid.substring(0, 8) + "... Cargando cuenta...");
 
-    // Intentar cargar la cuenta (el trigger la crea al registrarse)
-    let { data: acc } = await supabase.from("accounts").select("*").eq("id", uid).single();
+    // Intentar cargar la cuenta
+    const { data: acc, error: accErr } = await supabase.from("accounts").select("*").eq("id", uid).maybeSingle();
 
-    // Si no existe todavía (el trigger puede tardar un instante), esperar y reintentar
-    if (!acc) {
-      await new Promise((r) => setTimeout(r, 1500));
-      const retry = await supabase.from("accounts").select("*").eq("id", uid).single();
-      acc = retry.data;
+    if (accErr) {
+      setDebugMsg("Error leyendo cuenta: " + accErr.message + " (code: " + accErr.code + ")");
+      return;
     }
-    setAccount(acc);
+
+    if (!acc) {
+      setDebugMsg("Cuenta no encontrada para UID " + uid.substring(0, 8) + "... Reintentando en 2s...");
+      await new Promise((r) => setTimeout(r, 2000));
+      const { data: acc2, error: acc2Err } = await supabase.from("accounts").select("*").eq("id", uid).maybeSingle();
+      if (acc2Err) {
+        setDebugMsg("Reintento falló: " + acc2Err.message);
+        return;
+      }
+      if (!acc2) {
+        setDebugMsg("Cuenta no existe en la base después de reintento. El trigger puede no haber funcionado.");
+        return;
+      }
+      setAccount(acc2);
+      setDebugMsg("Cuenta cargada en reintento: " + acc2.name);
+    } else {
+      setAccount(acc);
+      setDebugMsg("Cuenta cargada: " + acc.name);
+    }
 
     const { data: profs } = await supabase.from("profiles").select("*").eq("owner_id", uid).order("created_at", { ascending: true });
     setProfiles(profs || []);
@@ -1039,6 +1057,11 @@ export default function NestApp() {
     <div style={{ width: "100%", minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", background: "#E7E2D8", fontFamily: "'Inter', sans-serif" }}>
       <style>{FONT_IMPORT}</style>
       <div style={{ width: 400, height: 780, maxHeight: "94vh", background: PALETTE.bgDeep, borderRadius: 36, border: "6px solid #05070A", boxShadow: "0 30px 80px rgba(0,0,0,0.6)", overflow: "hidden", position: "relative", display: "flex", flexDirection: "column" }}>
+        {debugMsg && (
+          <div style={{ background: "#FFF3CD", padding: "6px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#856404", borderBottom: "1px solid #FFE69C" }}>
+            {debugMsg}
+          </div>
+        )}
         {!session ? (
           <AuthScreen onAuthed={() => {}} />
         ) : showNotifications ? (
