@@ -87,8 +87,23 @@ const inputStyle = {
 
 // ---- pequeños componentes ---------------------------------------------------
 
-function Avatar({ name, hue = PALETTE.amber, size = 44 }) {
+function Avatar({ name, hue = PALETTE.amber, size = 44, src }) {
   const initial = name?.charAt(0)?.toUpperCase() || "?";
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
   return (
     <div
       style={{
@@ -714,6 +729,8 @@ function CirculoScreen({ myAccountId, circulo, solicitudes, onRefresh }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [pendingAccept, setPendingAccept] = useState(null); // {reqId, fromId} waiting for category
+  const [expanded, setExpanded] = useState({ my_family: true, all_family: true, friends: true });
 
   async function handleSearch() {
     if (!query.trim()) return;
@@ -728,9 +745,10 @@ function CirculoScreen({ myAccountId, circulo, solicitudes, onRefresh }) {
     setResults((prev) => prev.filter((r) => r.id !== targetId));
   }
 
-  async function aceptar(reqId, fromId) {
+  async function aceptarConCategoria(reqId, fromId, category) {
     await supabase.from("follow_requests").update({ status: "aceptada" }).eq("id", reqId);
-    await supabase.from("circle_connections").insert({ account_id: myAccountId, contact_id: fromId });
+    await supabase.from("circle_connections").insert({ account_id: myAccountId, contact_id: fromId, category });
+    setPendingAccept(null);
     onRefresh();
   }
 
@@ -738,6 +756,29 @@ function CirculoScreen({ myAccountId, circulo, solicitudes, onRefresh }) {
     await supabase.from("follow_requests").update({ status: "rechazada" }).eq("id", reqId);
     onRefresh();
   }
+
+  async function changeCategory(contactId, newCat) {
+    await supabase.from("circle_connections").update({ category: newCat })
+      .or(`and(account_id.eq.${myAccountId},contact_id.eq.${contactId}),and(account_id.eq.${contactId},contact_id.eq.${myAccountId})`);
+    onRefresh();
+  }
+
+  function toggleGroup(key) {
+    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  const groups = [
+    { key: "my_family", label: "My Family", desc: "Hermanos, padres, hijos" },
+    { key: "all_family", label: "All Family", desc: "Tíos, primos, abuelos" },
+    { key: "friends", label: "Friends", desc: "Amigos cercanos" },
+  ];
+
+  const categoryLabels = { my_family: "Familia directa", all_family: "Familia extendida", friends: "Amigo" };
+  const categoryOptions = [
+    { id: "my_family", label: "My Family", sub: "Hermano/a, padre/madre, hijo/a" },
+    { id: "all_family", label: "All Family", sub: "Tío/a, primo/a, abuelo/a" },
+    { id: "friends", label: "Friend", sub: "Amigo/a cercano/a" },
+  ];
 
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
@@ -763,30 +804,86 @@ function CirculoScreen({ myAccountId, circulo, solicitudes, onRefresh }) {
           <>
             <div style={{ color: PALETTE.amber, fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 12 }}>Solicitudes pendientes</div>
             {solicitudes.map((s) => (
-              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: PALETTE.bgPanel, border: `1px solid ${PALETTE.amber}33`, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }}>
-                <Avatar name={s.fromName} hue={PALETTE.amber} size={40} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: PALETTE.textPrimary, fontSize: 13.5, fontFamily: "'Inter', sans-serif", fontWeight: 600 }}>{s.fromName}</div>
-                  <div style={{ color: PALETTE.textMuted, fontSize: 11.5 }}>{s.fromEmail}</div>
+              <div key={s.id}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, background: PALETTE.bgPanel, border: `1px solid ${PALETTE.amber}33`, borderRadius: 14, padding: "12px 14px", marginBottom: pendingAccept?.reqId === s.id ? 0 : 10 }}>
+                  <Avatar name={s.fromName} hue={PALETTE.amber} size={40} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: PALETTE.textPrimary, fontSize: 13.5, fontFamily: "'Inter', sans-serif", fontWeight: 600 }}>{s.fromName}</div>
+                    <div style={{ color: PALETTE.textMuted, fontSize: 11.5 }}>{s.fromEmail}</div>
+                  </div>
+                  <button onClick={() => rechazar(s.id)} style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${PALETTE.textMuted}55`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                    <X size={15} color={PALETTE.textMuted} />
+                  </button>
+                  <button onClick={() => setPendingAccept({ reqId: s.id, fromId: s.fromId })} style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${PALETTE.sage}88`, background: `${PALETTE.sage}22`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                    <Check size={15} color={PALETTE.sage} />
+                  </button>
                 </div>
-                <button onClick={() => rechazar(s.id)} style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${PALETTE.textMuted}55`, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                  <X size={15} color={PALETTE.textMuted} />
-                </button>
-                <button onClick={() => aceptar(s.id, s.fromId)} style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${PALETTE.sage}88`, background: `${PALETTE.sage}22`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                  <Check size={15} color={PALETTE.sage} />
-                </button>
+                {pendingAccept?.reqId === s.id && (
+                  <div style={{ background: PALETTE.bgCard, borderRadius: "0 0 14px 14px", padding: "10px 14px", marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, color: PALETTE.textMuted, marginBottom: 8, fontFamily: "'Inter', sans-serif" }}>¿Qué relación tenés con {s.fromName}?</div>
+                    {categoryOptions.map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => aceptarConCategoria(s.id, s.fromId, opt.id)}
+                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: "transparent", border: `1px solid ${PALETTE.border}`, borderRadius: 10, padding: "8px 12px", marginBottom: 6, cursor: "pointer", textAlign: "left" }}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: PALETTE.textPrimary, fontFamily: "'Inter', sans-serif" }}>{opt.label}</div>
+                          <div style={{ fontSize: 11, color: PALETTE.textMuted }}>{opt.sub}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </>
         )}
 
-        <div style={{ color: PALETTE.sage, fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", margin: "18px 0 12px" }}>Tu círculo ({circulo.length})</div>
-        {circulo.map((c) => (
-          <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 4px", borderBottom: `1px solid ${PALETTE.border}` }}>
-            <Avatar name={c.name} hue={PALETTE.sage} size={38} />
-            <div style={{ color: PALETTE.textPrimary, fontSize: 13.5, fontFamily: "'Inter', sans-serif" }}>{c.name}</div>
-          </div>
-        ))}
+        {/* Subgrupos */}
+        {groups.map((group) => {
+          const members = circulo.filter((c) => (c.category || "friends") === group.key);
+          return (
+            <div key={group.key} style={{ marginTop: 16 }}>
+              <button
+                onClick={() => toggleGroup(group.key)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0", marginBottom: 8 }}
+              >
+                <div>
+                  <span style={{ color: PALETTE.sage, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    {group.label}
+                  </span>
+                  <span style={{ color: PALETTE.textMuted, fontSize: 11, marginLeft: 6 }}>({members.length})</span>
+                </div>
+                <ChevronLeft size={16} color={PALETTE.textMuted} style={{ transform: expanded[group.key] ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
+              </button>
+              {expanded[group.key] && (
+                members.length === 0 ? (
+                  <div style={{ color: PALETTE.textMuted, fontSize: 12, padding: "4px 0 8px", fontStyle: "italic" }}>{group.desc}</div>
+                ) : (
+                  members.map((c) => (
+                    <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 4px", borderBottom: `1px solid ${PALETTE.border}` }}>
+                      <Avatar name={c.name} hue={PALETTE.sage} size={38} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ color: PALETTE.textPrimary, fontSize: 13.5, fontFamily: "'Inter', sans-serif" }}>{c.name}</div>
+                        <div style={{ color: PALETTE.textMuted, fontSize: 11 }}>{categoryLabels[c.category || "friends"]}</div>
+                      </div>
+                      <select
+                        value={c.category || "friends"}
+                        onChange={(e) => changeCategory(c.id, e.target.value)}
+                        style={{ background: PALETTE.bgCard, border: `1px solid ${PALETTE.border}`, borderRadius: 8, padding: "4px 6px", fontSize: 11, color: PALETTE.textMuted, fontFamily: "'Inter', sans-serif" }}
+                      >
+                        <option value="my_family">My Family</option>
+                        <option value="all_family">All Family</option>
+                        <option value="friends">Friends</option>
+                      </select>
+                    </div>
+                  ))
+                )
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1018,13 +1115,21 @@ function PostDetailScreen({ post, myAccountId, onBack, onRefresh }) {
   );
 }
 
-function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onOpenMyFeed, onOpenPost }) {
+function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onOpenMyFeed, onOpenPost, onRefreshAccount }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [avatarUrl, setAvatarUrl] = useState(null);
 
   const load = useCallback(async () => {
     if (!myProfile) { setLoading(false); return; }
     setLoading(true);
+
+    // Cargar avatar
+    if (account?.avatar_url) {
+      const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(account.avatar_url, 3600);
+      setAvatarUrl(signed?.signedUrl || null);
+    }
+
     const { data } = await supabase.from("posts").select("*").eq("profile_id", myProfile.id).order("created_at", { ascending: false });
     const withUrls = await Promise.all(
       (data || []).map(async (post) => {
@@ -1038,24 +1143,61 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
     );
     setPosts(withUrls);
     setLoading(false);
-  }, [myProfile]);
+  }, [myProfile, account]);
 
   useEffect(() => { load(); }, [load]);
 
+  async function handleAvatarChange(e) {
+    const file = e.target.files?.[0];
+    if (!file || !account) return;
+    const path = `${account.id}/avatar-${Date.now()}-${file.name}`;
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file);
+    if (upErr) return;
+    await supabase.from("accounts").update({ avatar_url: path }).eq("id", account.id);
+    if (onRefreshAccount) onRefreshAccount();
+    const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600);
+    setAvatarUrl(signed?.signedUrl || null);
+  }
+
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
-      {/* top bar */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px 0" }}>
-        <span style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 18, color: PALETTE.textPrimary }}>{account?.name || "Tu cuenta"}</span>
+      {/* top bar: Nest + for friends and family */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px 6px" }}>
+        <div>
+          <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 22, color: PALETTE.textPrimary }}>Nest</div>
+          <div style={{ fontFamily: "'Inter', sans-serif", fontStyle: "italic", fontSize: 11, color: PALETTE.textMuted, marginTop: -2 }}>for friends and family</div>
+        </div>
         <button onClick={onOpenConfig} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: PALETTE.textPrimary }}>
           <Settings size={20} />
         </button>
       </div>
 
-      <div style={{ padding: "20px 20px 0" }}>
-        {/* avatar centrado */}
+      <div style={{ padding: "16px 20px 0" }}>
+        {/* avatar centrado con botón de cambiar foto */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 16 }}>
-          <Avatar name={account?.name} hue={PALETTE.amber} size={86} />
+          <div style={{ position: "relative" }}>
+            <Avatar name={account?.name} hue={PALETTE.amber} size={86} src={avatarUrl} />
+            <label
+              htmlFor="avatar-upload"
+              style={{
+                position: "absolute",
+                bottom: 0,
+                right: 0,
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: PALETTE.amber,
+                border: `2px solid ${PALETTE.bgDeep}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <Camera size={13} color="#FFFFFF" />
+            </label>
+            <input type="file" accept="image/*" id="avatar-upload" onChange={handleAvatarChange} style={{ display: "none" }} />
+          </div>
           <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 16, color: PALETTE.textPrimary }}>{account?.name}</span>
             <Badge tone="sage"><ShieldCheck size={9} /> Verificada</Badge>
@@ -1089,7 +1231,7 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
           <Plus size={18} /> Crear recuerdo
         </button>
 
-        {/* grilla de fotos */}
+        {/* grilla de fotos estilo polaroid */}
         {loading && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: 30 }}>Cargando...</div>}
         {!loading && posts.length === 0 && (
           <div style={{ textAlign: "center", padding: "40px 10px" }}>
@@ -1218,8 +1360,12 @@ export default function NestApp() {
     const { data: conns } = await supabase.from("circle_connections").select("*").or(`account_id.eq.${uid},contact_id.eq.${uid}`);
     const otherIds = (conns || []).map((c) => (c.account_id === uid ? c.contact_id : c.account_id));
     if (otherIds.length > 0) {
-      const { data: others } = await supabase.from("accounts").select("id,name,email").in("id", otherIds);
-      setCirculo(others || []);
+      const { data: others } = await supabase.from("accounts").select("id,name,email,avatar_url").in("id", otherIds);
+      const withCategory = (others || []).map((o) => {
+        const conn = (conns || []).find((c) => (c.account_id === uid && c.contact_id === o.id) || (c.contact_id === uid && c.account_id === o.id));
+        return { ...o, category: conn?.category || "friends" };
+      });
+      setCirculo(withCategory);
     } else {
       setCirculo([]);
     }
@@ -1340,6 +1486,7 @@ export default function NestApp() {
                 onOpenConfig={() => setShowConfig(true)}
                 onOpenMyFeed={() => myProfile && setOpenProfileId(myProfile.id)}
                 onOpenPost={setOpenPost}
+                onRefreshAccount={loadAll}
               />
             )}
             <BottomNav tab={tab} setTab={setTab} />
