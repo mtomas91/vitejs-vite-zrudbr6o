@@ -38,7 +38,7 @@ const PALETTE = {
   bgDeep: "#FFFFFF",
   bgPanel: "#F7F5F0",
   bgCard: "#EFEBE3",
-  amber: "#C1873A",
+  amber: "#D4963F",
   sage: "#5E8468",
   textPrimary: "#20242B",
   textMuted: "#767F8A",
@@ -1269,7 +1269,7 @@ export default function NestApp() {
   return (
     <div style={{ width: "100%", minHeight: "100vh", background: PALETTE.bgDeep, fontFamily: "'Inter', sans-serif" }}>
       <style>{FONT_IMPORT}</style>
-      <div style={{ width: "100%", maxWidth: 480, margin: "0 auto", minHeight: "100vh", background: PALETTE.bgDeep, overflow: "hidden", position: "relative", display: "flex", flexDirection: "column" }}>
+      <div style={{ width: "100%", maxWidth: 480, margin: "0 auto", minHeight: "100vh", background: PALETTE.bgDeep, overflow: "hidden", position: "relative", display: "flex", flexDirection: "column", borderLeft: `3px solid ${PALETTE.amber}44`, borderRight: `3px solid ${PALETTE.amber}44`, borderRadius: 24 }}>
         {debugMsg && (
           <div style={{ background: "#FFF3CD", padding: "6px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#856404", borderBottom: "1px solid #FFE69C" }}>
             {debugMsg}
