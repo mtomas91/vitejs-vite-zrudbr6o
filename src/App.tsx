@@ -224,19 +224,48 @@ function AuthScreen({ onAuthed }) {
   async function completeSignup() {
     setError("");
     setLoading(true);
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) {
+
+    // 1. Registrar el usuario
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
+    if (signUpError) {
       setLoading(false);
-      setError(error.message);
+      setError("Error al registrar: " + signUpError.message);
       return;
     }
-    const userId = data.user?.id;
-    if (userId) {
-      await supabase.from("accounts").insert({ id: userId, name, email, verified: true });
-      await supabase.from("profiles").insert({ owner_id: userId, name, tipo: "adulto", hue: "#C1873A", role: "Cuenta madre" });
+
+    // 2. Hacer login explícito para asegurar que la sesión se active
+    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+    if (loginError) {
+      setLoading(false);
+      setError("Cuenta creada pero falló el login automático: " + loginError.message + ". Probá iniciar sesión manualmente.");
+      return;
     }
+
+    const userId = loginData.user?.id;
+    if (!userId) {
+      setLoading(false);
+      setError("No se pudo obtener el ID de usuario. Probá iniciar sesión manualmente.");
+      return;
+    }
+
+    // 3. Crear la cuenta en la base de datos
+    const { error: accError } = await supabase.from("accounts").insert({ id: userId, name, email, verified: true });
+    if (accError) {
+      setLoading(false);
+      setError("Error creando cuenta: " + accError.message);
+      return;
+    }
+
+    // 4. Crear el perfil adulto
+    const { error: profError } = await supabase.from("profiles").insert({ owner_id: userId, name, tipo: "adulto", hue: "#C1873A", role: "Cuenta madre" });
+    if (profError) {
+      setLoading(false);
+      setError("Error creando perfil: " + profError.message);
+      return;
+    }
+
     setLoading(false);
-    onAuthed();
+    // El listener onAuthStateChange en el componente raíz detecta la sesión y recarga todo
   }
 
   return (
@@ -841,11 +870,9 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
 
   useEffect(() => { load(); }, [load]);
 
-  const childProfiles = profiles.filter((p) => p.tipo === "hijo");
-
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
-      {/* top bar con nombre a la izq y config a la derecha */}
+      {/* top bar */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px 0" }}>
         <span style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 18, color: PALETTE.textPrimary }}>{account?.name || "Tu cuenta"}</span>
         <button onClick={onOpenConfig} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: PALETTE.textPrimary }}>
@@ -853,81 +880,42 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
         </button>
       </div>
 
-      <div style={{ padding: "16px 20px 0" }}>
-        {/* header row: avatar + stats */}
-        <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 16 }}>
-          <Avatar name={account?.name} hue={PALETTE.amber} size={76} />
-          <div style={{ flex: 1, display: "flex", justifyContent: "space-around", textAlign: "center" }}>
-            <div>
-              <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 20, color: PALETTE.textPrimary }}>{posts.length}</div>
-              <div style={{ fontSize: 11, color: PALETTE.textMuted, fontFamily: "'Inter', sans-serif" }}>recuerdos</div>
-            </div>
-            <div>
-              <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 20, color: PALETTE.textPrimary }}>{circulo.length}</div>
-              <div style={{ fontSize: 11, color: PALETTE.textMuted, fontFamily: "'Inter', sans-serif" }}>círculo</div>
-            </div>
-            <div>
-              <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 20, color: PALETTE.textPrimary }}>{childProfiles.length}</div>
-              <div style={{ fontSize: 11, color: PALETTE.textMuted, fontFamily: "'Inter', sans-serif" }}>perfiles</div>
-            </div>
-          </div>
-        </div>
-
-        {/* nombre + badge + bio */}
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-            <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 14, color: PALETTE.textPrimary }}>{account?.name}</span>
+      <div style={{ padding: "20px 20px 0" }}>
+        {/* avatar centrado */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 16 }}>
+          <Avatar name={account?.name} hue={PALETTE.amber} size={86} />
+          <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 16, color: PALETTE.textPrimary }}>{account?.name}</span>
             <Badge tone="sage"><ShieldCheck size={9} /> Verificada</Badge>
           </div>
-          <div style={{ color: PALETTE.textMuted, fontSize: 12.5, fontFamily: "'Inter', sans-serif", lineHeight: 1.4 }}>
+          <div style={{ color: PALETTE.textMuted, fontSize: 12.5, fontFamily: "'Inter', sans-serif", marginTop: 2 }}>
             {account?.email}
           </div>
         </div>
 
-        {/* botones de acción */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
-          <button
-            onClick={onOpenMyFeed}
-            style={{
-              flex: 1,
-              background: PALETTE.amber,
-              color: "#FFFFFF",
-              border: "none",
-              borderRadius: 10,
-              padding: "9px 0",
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: 600,
-              fontSize: 13,
-              cursor: "pointer",
-            }}
-          >
-            Guardar recuerdo
-          </button>
-          <button
-            onClick={onOpenConfig}
-            style={{
-              flex: 1,
-              background: PALETTE.bgPanel,
-              color: PALETTE.textPrimary,
-              border: `1px solid ${PALETTE.border}`,
-              borderRadius: 10,
-              padding: "9px 0",
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: 600,
-              fontSize: 13,
-              cursor: "pointer",
-            }}
-          >
-            Editar perfil
-          </button>
-        </div>
-
-        {/* separador con tabs de contenido (solo grilla por ahora) */}
-        <div style={{ display: "flex", borderBottom: `2px solid ${PALETTE.amber}`, marginBottom: 2 }}>
-          <div style={{ flex: 1, textAlign: "center", paddingBottom: 10 }}>
-            <Camera size={18} color={PALETTE.amber} />
-          </div>
-        </div>
+        {/* botón crear recuerdo */}
+        <button
+          onClick={onOpenMyFeed}
+          style={{
+            width: "100%",
+            background: PALETTE.amber,
+            color: "#FFFFFF",
+            border: "none",
+            borderRadius: 12,
+            padding: "13px 0",
+            fontFamily: "'Inter', sans-serif",
+            fontWeight: 600,
+            fontSize: 14,
+            cursor: "pointer",
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+          }}
+        >
+          <Plus size={18} /> Crear recuerdo
+        </button>
 
         {/* grilla de fotos */}
         {loading && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: 30 }}>Cargando...</div>}
@@ -935,12 +923,6 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
           <div style={{ textAlign: "center", padding: "40px 10px" }}>
             <Camera size={36} color={PALETTE.border} />
             <div style={{ color: PALETTE.textMuted, fontSize: 13, marginTop: 10 }}>Todavía no guardaste ningún recuerdo.</div>
-            <button
-              onClick={onOpenMyFeed}
-              style={{ marginTop: 14, background: "none", border: "none", color: PALETTE.amber, fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}
-            >
-              Guardar tu primer recuerdo
-            </button>
           </div>
         )}
 
@@ -1006,7 +988,19 @@ export default function NestApp() {
   const loadAll = useCallback(async () => {
     if (!session?.user) return;
     const uid = session.user.id;
-    const { data: acc } = await supabase.from("accounts").select("*").eq("id", uid).single();
+    const userEmail = session.user.email || "";
+
+    // Intentar cargar la cuenta
+    let { data: acc } = await supabase.from("accounts").select("*").eq("id", uid).single();
+
+    // Si no existe la cuenta (registro que quedó a medias), crearla automáticamente
+    if (!acc) {
+      const userName = userEmail.split("@")[0] || "Usuario";
+      await supabase.from("accounts").insert({ id: uid, name: userName, email: userEmail, verified: true });
+      await supabase.from("profiles").insert({ owner_id: uid, name: userName, tipo: "adulto", hue: "#C1873A", role: "Cuenta madre" });
+      const { data: newAcc } = await supabase.from("accounts").select("*").eq("id", uid).single();
+      acc = newAcc;
+    }
     setAccount(acc);
 
     const { data: profs } = await supabase.from("profiles").select("*").eq("owner_id", uid).order("created_at", { ascending: true });
