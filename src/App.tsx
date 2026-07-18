@@ -225,47 +225,28 @@ function AuthScreen({ onAuthed }) {
     setError("");
     setLoading(true);
 
-    // 1. Registrar el usuario
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
+    // 1. Registrar el usuario (el trigger en la base crea account + profile automáticamente)
+    const { error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name } },
+    });
     if (signUpError) {
       setLoading(false);
       setError("Error al registrar: " + signUpError.message);
       return;
     }
 
-    // 2. Hacer login explícito para asegurar que la sesión se active
-    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+    // 2. Login explícito para activar la sesión
+    const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
     if (loginError) {
       setLoading(false);
-      setError("Cuenta creada pero falló el login automático: " + loginError.message + ". Probá iniciar sesión manualmente.");
-      return;
-    }
-
-    const userId = loginData.user?.id;
-    if (!userId) {
-      setLoading(false);
-      setError("No se pudo obtener el ID de usuario. Probá iniciar sesión manualmente.");
-      return;
-    }
-
-    // 3. Crear la cuenta en la base de datos
-    const { error: accError } = await supabase.from("accounts").insert({ id: userId, name, email, verified: true });
-    if (accError) {
-      setLoading(false);
-      setError("Error creando cuenta: " + accError.message);
-      return;
-    }
-
-    // 4. Crear el perfil adulto
-    const { error: profError } = await supabase.from("profiles").insert({ owner_id: userId, name, tipo: "adulto", hue: "#C1873A", role: "Cuenta madre" });
-    if (profError) {
-      setLoading(false);
-      setError("Error creando perfil: " + profError.message);
+      setError("Cuenta creada, pero falló el login: " + loginError.message + ". Probá iniciar sesión.");
       return;
     }
 
     setLoading(false);
-    // El listener onAuthStateChange en el componente raíz detecta la sesión y recarga todo
+    // El listener onAuthStateChange detecta la sesión y loadAll carga todo
   }
 
   return (
@@ -988,18 +969,15 @@ export default function NestApp() {
   const loadAll = useCallback(async () => {
     if (!session?.user) return;
     const uid = session.user.id;
-    const userEmail = session.user.email || "";
 
-    // Intentar cargar la cuenta
+    // Intentar cargar la cuenta (el trigger la crea al registrarse)
     let { data: acc } = await supabase.from("accounts").select("*").eq("id", uid).single();
 
-    // Si no existe la cuenta (registro que quedó a medias), crearla automáticamente
+    // Si no existe todavía (el trigger puede tardar un instante), esperar y reintentar
     if (!acc) {
-      const userName = userEmail.split("@")[0] || "Usuario";
-      await supabase.from("accounts").insert({ id: uid, name: userName, email: userEmail, verified: true });
-      await supabase.from("profiles").insert({ owner_id: uid, name: userName, tipo: "adulto", hue: "#C1873A", role: "Cuenta madre" });
-      const { data: newAcc } = await supabase.from("accounts").select("*").eq("id", uid).single();
-      acc = newAcc;
+      await new Promise((r) => setTimeout(r, 1500));
+      const retry = await supabase.from("accounts").select("*").eq("id", uid).single();
+      acc = retry.data;
     }
     setAccount(acc);
 
