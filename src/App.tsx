@@ -1759,9 +1759,8 @@ export default function NestApp() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    if (!session?.user) { // debug removed return; }
+    if (!session?.user) return;
     const uid = session.user.id;
-    // debug removed
 
     // Intentar cargar la cuenta
     const { data: acc, error: accErr } = await supabase.from("accounts").select("*").eq("id", uid).maybeSingle();
