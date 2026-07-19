@@ -717,37 +717,6 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId, onZoomPhot
   );
 }
 
-  const loadPosts = useCallback(async () => {
-    setLoading(true);
-    const { data: postsData } = await supabase
-      .from("posts")
-      .select("*")
-      .eq("profile_id", profile.id)
-      .order("created_at", { ascending: false });
-
-    const withUrlsAndComments = await Promise.all(
-      (postsData || []).map(async (post) => {
-        let imageUrl = null;
-        if (post.image_url) {
-          const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 900);
-          imageUrl = signed?.signedUrl || null;
-        }
-        const { data: comments } = await supabase
-          .from("comments")
-          .select("*")
-          .eq("post_id", post.id)
-          .order("created_at", { ascending: true });
-        return { ...post, imageUrl, comments: comments || [] };
-      })
-    );
-    setPosts(withUrlsAndComments);
-    setLoading(false);
-  }, [profile.id]);
-
-  useEffect(() => {
-    loadPosts();
-  }, [loadPosts]);
-
 
 function tiltFor(id) {
   if (!id) return 0;
