@@ -1473,7 +1473,7 @@ function BottomNav({ tab, setTab }) {
     { id: "cuenta", icon: UserCircle, label: "Cuenta" },
   ];
   return (
-    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, display: "flex", background: PALETTE.bgPanel, borderTop: `1px solid ${PALETTE.border}`, padding: "10px 0 14px" }}>
+    <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 480, margin: "0 auto", display: "flex", background: PALETTE.bgPanel, borderTop: `1px solid ${PALETTE.border}`, padding: "10px 0 14px", zIndex: 50 }}>
       {items.map((it) => {
         const active = tab === it.id;
         const Icon = it.icon;
