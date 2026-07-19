@@ -426,7 +426,7 @@ function ConfiguracionScreen({ profiles, onOpenProfile, onCreateChild, onBack })
 
 // ---- pantalla de feed ---------------------------------------------------------
 
-function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId, onZoomPhoto }) {
+function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId, myName, onZoomPhoto }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showPublish, setShowPublish] = useState(false);
@@ -550,7 +550,7 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId, onZoomPhot
 
   async function addComment(postId, text) {
     if (!text.trim()) return;
-    await supabase.from("comments").insert({ post_id: postId, author_id: myAccountId, author_name: "Vos", text: text.trim() });
+    await supabase.from("comments").insert({ post_id: postId, author_id: myAccountId, author_name: myName || "Anónimo", text: text.trim() });
     loadPosts();
   }
 
@@ -728,11 +728,26 @@ function tiltFor(id) {
 function PostCard({ post, onComment, header, onHeaderTap, onZoomPhoto }) {
   const [text, setText] = useState("");
   const [albumIdx, setAlbumIdx] = useState(0);
+  const [touchStart, setTouchStart] = useState(null);
   const deg = tiltFor(post.id);
   const filterCSS = { normal: "none", bw: "grayscale(100%)", retro: "sepia(80%) contrast(90%) brightness(95%)" };
   const imgFilter = filterCSS[post.filter] || "none";
   const albumUrls = post.imageUrls && post.imageUrls.length > 0 ? post.imageUrls : (post.imageUrl ? [post.imageUrl] : []);
   const currentImg = albumUrls[albumIdx] || null;
+
+  function handleTouchStart(e) {
+    setTouchStart(e.touches[0].clientX);
+  }
+
+  function handleTouchEnd(e) {
+    if (touchStart === null) return;
+    const diff = touchStart - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 40) {
+      if (diff > 0 && albumIdx < albumUrls.length - 1) setAlbumIdx(i => i + 1);
+      if (diff < 0 && albumIdx > 0) setAlbumIdx(i => i - 1);
+    }
+    setTouchStart(null);
+  }
 
   return (
     <div
@@ -756,6 +771,8 @@ function PostCard({ post, onComment, header, onHeaderTap, onZoomPhoto }) {
       )}
       <div
         onClick={() => currentImg && onZoomPhoto && onZoomPhoto(currentImg)}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
         style={{ height: 190, borderRadius: 3, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4, cursor: currentImg ? "pointer" : "default", position: "relative" }}
       >
         {currentImg ? (
@@ -797,7 +814,7 @@ function PostCard({ post, onComment, header, onHeaderTap, onZoomPhoto }) {
   );
 }
 
-function WallScreen({ myAccountId, onOpenNotifications, unreadCount, onLogout, onViewProfile, onZoomPhoto }) {
+function WallScreen({ myAccountId, myName, onOpenNotifications, unreadCount, onLogout, onViewProfile, onZoomPhoto }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -837,7 +854,7 @@ function WallScreen({ myAccountId, onOpenNotifications, unreadCount, onLogout, o
 
   async function addComment(postId, postOwnerId, text) {
     if (!text.trim()) return;
-    await supabase.from("comments").insert({ post_id: postId, author_id: myAccountId, author_name: "Vos", text: text.trim() });
+    await supabase.from("comments").insert({ post_id: postId, author_id: myAccountId, author_name: myName || "Anónimo", text: text.trim() });
     // Crear notificación para el dueño del post (si no sos vos mismo)
     if (postOwnerId !== myAccountId) {
       await supabase.from("notifications").insert({ account_id: postOwnerId, text: "Alguien comentó en tu recuerdo" });
@@ -1209,7 +1226,7 @@ function ChatDetailScreen({ contact, myAccountId, myName, onBack }) {
 
 // ---- cuenta y nav ---------------------------------------------------------------
 
-function PostDetailScreen({ post, myAccountId, circulo, onBack, onRefresh, onZoomPhoto }) {
+function PostDetailScreen({ post, myAccountId, myName, circulo, onBack, onRefresh, onZoomPhoto }) {
   const [comments, setComments] = useState([]);
   const [text, setText] = useState("");
   const [visibility, setVisibility] = useState(post.visibility);
@@ -1234,7 +1251,7 @@ function PostDetailScreen({ post, myAccountId, circulo, onBack, onRefresh, onZoo
 
   async function addComment() {
     if (!text.trim()) return;
-    await supabase.from("comments").insert({ post_id: post.id, author_id: myAccountId, author_name: "Vos", text: text.trim() });
+    await supabase.from("comments").insert({ post_id: post.id, author_id: myAccountId, author_name: myName || "Anónimo", text: text.trim() });
     setText("");
     loadComments();
   }
@@ -1866,6 +1883,7 @@ export default function NestApp() {
           <PostDetailScreen
             post={openPost}
             myAccountId={session.user.id}
+            myName={account?.name}
             circulo={circulo}
             onBack={() => setOpenPost(null)}
             onRefresh={loadAll}
@@ -1879,6 +1897,7 @@ export default function NestApp() {
             isOwner={openProfile.tipo === "adulto"}
             circulo={circulo}
             myAccountId={session.user.id}
+            myName={account?.name}
             onBack={() => setOpenProfileId(null)}
             onZoomPhoto={setZoomedPhoto}
           />
@@ -1887,6 +1906,7 @@ export default function NestApp() {
             {tab === "wall" && (
               <WallScreen
                 myAccountId={session.user.id}
+                myName={account?.name}
                 onOpenNotifications={() => setShowNotifications(true)}
                 unreadCount={solicitudes.length + notifications.length}
                 onLogout={handleLogout}
