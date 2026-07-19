@@ -36,7 +36,7 @@ const BUCKET = "nest-photos";
 
 const PALETTE = {
   bgDeep: "#FFFFFF",
-  bgPanel: "#F7F5F0",
+  bgPanel: "#F0ECE3",
   bgCard: "#EFEBE3",
   amber: "#CAAA5A",
   sage: "#5E8468",
@@ -426,12 +426,14 @@ function ConfiguracionScreen({ profiles, onOpenProfile, onCreateChild, onBack })
 
 // ---- pantalla de feed ---------------------------------------------------------
 
-function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId }) {
+function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId, onZoomPhoto }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showPublish, setShowPublish] = useState(false);
   const [caption, setCaption] = useState("");
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [audioFile, setAudioFile] = useState(null);
+  const [filter, setFilter] = useState("normal");
   const [visibility, setVisibility] = useState("privado");
   const [sharedWith, setSharedWith] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -452,64 +454,93 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId }) {
           const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 900);
           imageUrl = signed?.signedUrl || null;
         }
+        let imageUrls = [];
+        if (post.image_urls && post.image_urls.length > 0) {
+          imageUrls = await Promise.all(post.image_urls.map(async (path) => {
+            const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 900);
+            return signed?.signedUrl || null;
+          }));
+        }
         const { data: comments } = await supabase
           .from("comments")
           .select("*")
           .eq("post_id", post.id)
           .order("created_at", { ascending: true });
-        return { ...post, imageUrl, comments: comments || [] };
+        return { ...post, imageUrl, imageUrls: imageUrls.filter(Boolean), comments: comments || [] };
       })
     );
     setPosts(withUrlsAndComments);
     setLoading(false);
   }, [profile.id]);
 
-  useEffect(() => {
-    loadPosts();
-  }, [loadPosts]);
+  useEffect(() => { loadPosts(); }, [loadPosts]);
 
   function resetForm() {
-    setCaption(""); setFile(null); setVisibility("privado"); setSharedWith([]); setShowPublish(false);
+    setCaption(""); setFiles([]); setAudioFile(null); setFilter("normal"); setVisibility("privado"); setSharedWith([]); setShowPublish(false); setPublishError("");
   }
 
   function toggleShared(id) {
     setSharedWith((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
+  function addFiles(newFiles) {
+    const total = [...files, ...Array.from(newFiles)].slice(0, 3);
+    setFiles(total);
+  }
+
+  function removeFile(idx) {
+    setFiles((prev) => prev.filter((_, i) => i !== idx));
+  }
+
   async function handlePublish() {
-    if (!caption.trim()) { setPublishError("Escribí una descripción para el recuerdo."); return; }
+    if (!caption.trim()) { setPublishError("Escribí una descripción."); return; }
     setPublishError("");
     setUploading(true);
 
     let imagePath = null;
-    if (file) {
-      const path = `${myAccountId}/${profile.id}/${Date.now()}-${file.name}`;
-      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file);
+    let imagePaths = [];
+
+    for (const f of files) {
+      const path = `${myAccountId}/${profile.id}/${Date.now()}-${f.name}`;
+      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, f);
       if (upErr) {
         setPublishError("Error subiendo foto: " + upErr.message);
         setUploading(false);
         return;
       }
-      imagePath = path;
+      imagePaths.push(path);
+    }
+    if (imagePaths.length > 0) imagePath = imagePaths[0];
+
+    let audioPath = null;
+    if (audioFile) {
+      const aPath = `${myAccountId}/${profile.id}/audio-${Date.now()}-${audioFile.name}`;
+      const { error: aErr } = await supabase.storage.from(BUCKET).upload(aPath, audioFile);
+      if (!aErr) audioPath = aPath;
     }
 
     const { data: inserted, error: postErr } = await supabase
       .from("posts")
-      .insert({ profile_id: profile.id, owner_id: myAccountId, caption: caption.trim(), image_url: imagePath, visibility })
+      .insert({
+        profile_id: profile.id,
+        owner_id: myAccountId,
+        caption: caption.trim(),
+        image_url: imagePath,
+        image_urls: imagePaths,
+        filter,
+        visibility,
+      })
       .select()
       .single();
 
     if (postErr) {
-      setPublishError("Error guardando recuerdo: " + postErr.message);
+      setPublishError("Error guardando: " + postErr.message);
       setUploading(false);
       return;
     }
 
     if (inserted && visibility === "especifico" && sharedWith.length > 0) {
-      const { error: shareErr } = await supabase.from("post_shares").insert(sharedWith.map((accountId) => ({ post_id: inserted.id, account_id: accountId })));
-      if (shareErr) {
-        setPublishError("Recuerdo guardado, pero falló compartir: " + shareErr.message);
-      }
+      await supabase.from("post_shares").insert(sharedWith.map((accountId) => ({ post_id: inserted.id, account_id: accountId })));
     }
 
     setUploading(false);
@@ -529,6 +560,14 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId }) {
     { id: "publico", label: "Todo mi círculo", desc: "Visible para tus contactos", icon: Globe },
   ];
 
+  const filterOptions = [
+    { id: "normal", label: "Normal" },
+    { id: "bw", label: "B&N" },
+    { id: "retro", label: "Retro" },
+  ];
+
+  const filterCSS = { normal: "none", bw: "grayscale(100%)", retro: "sepia(80%) contrast(90%) brightness(95%)" };
+
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
       <TopBar title={profile.name} onBack={onBack} right={<Avatar name={profile.name} hue={profile.hue} size={34} />} />
@@ -545,24 +584,79 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId }) {
           </button>
         ) : (
           <div style={{ background: PALETTE.bgPanel, border: `1px solid ${PALETTE.border}`, borderRadius: 16, padding: 16, marginBottom: 20 }}>
-            <input type="file" accept="image/*" capture="environment" id="file-camera" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ display: "none" }} />
-            <input type="file" accept="image/*" id="file-gallery" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ display: "none" }} />
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              <label htmlFor="file-camera" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, border: `1.5px dashed ${PALETTE.border}`, borderRadius: 12, padding: "16px 8px", cursor: "pointer", color: PALETTE.textMuted }}>
-                <Camera size={20} />
-                <span style={{ fontSize: 11, fontFamily: "'Inter', sans-serif" }}>Sacar foto</span>
+            {/* Botones de cámara, galería, audio */}
+            <input type="file" accept="image/*" capture="environment" id="file-camera" onChange={(e) => e.target.files?.[0] && addFiles([e.target.files[0]])} style={{ display: "none" }} />
+            <input type="file" accept="image/*" multiple id="file-gallery" onChange={(e) => e.target.files && addFiles(e.target.files)} style={{ display: "none" }} />
+            <input type="file" accept="audio/*" id="file-audio" onChange={(e) => setAudioFile(e.target.files?.[0] || null)} style={{ display: "none" }} />
+            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+              <label htmlFor="file-camera" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, border: `1.5px dashed ${PALETTE.border}`, borderRadius: 12, padding: "12px 6px", cursor: "pointer", color: PALETTE.textMuted }}>
+                <Camera size={18} />
+                <span style={{ fontSize: 10, fontFamily: "'Inter', sans-serif" }}>Cámara</span>
               </label>
-              <label htmlFor="file-gallery" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, border: `1.5px dashed ${PALETTE.border}`, borderRadius: 12, padding: "16px 8px", cursor: "pointer", color: PALETTE.textMuted }}>
-                <ImageIcon size={20} />
-                <span style={{ fontSize: 11, fontFamily: "'Inter', sans-serif" }}>Galería</span>
+              <label htmlFor="file-gallery" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, border: `1.5px dashed ${PALETTE.border}`, borderRadius: 12, padding: "12px 6px", cursor: "pointer", color: PALETTE.textMuted }}>
+                <ImageIcon size={18} />
+                <span style={{ fontSize: 10, fontFamily: "'Inter', sans-serif" }}>Galería</span>
+              </label>
+              <label htmlFor="file-audio" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, border: `1.5px dashed ${PALETTE.border}`, borderRadius: 12, padding: "12px 6px", cursor: "pointer", color: PALETTE.textMuted }}>
+                <MessagesSquare size={18} />
+                <span style={{ fontSize: 10, fontFamily: "'Inter', sans-serif" }}>Audio</span>
               </label>
             </div>
-            {file && (
-              <div style={{ fontSize: 12, color: PALETTE.sage, marginBottom: 8, fontFamily: "'Inter', sans-serif" }}>
-                📎 {file.name}
+
+            {/* Preview de archivos seleccionados */}
+            {files.length > 0 && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 10, overflowX: "auto" }}>
+                {files.map((f, i) => (
+                  <div key={i} style={{ position: "relative", width: 70, height: 70, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: PALETTE.bgCard }}>
+                    <img src={URL.createObjectURL(f)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", filter: filterCSS[filter] }} />
+                    <button onClick={() => removeFile(i)} style={{ position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 11 }}>×</button>
+                  </div>
+                ))}
+                {files.length < 3 && (
+                  <label htmlFor="file-gallery" style={{ width: 70, height: 70, borderRadius: 8, border: `1.5px dashed ${PALETTE.border}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: PALETTE.textMuted, flexShrink: 0 }}>
+                    <Plus size={20} />
+                  </label>
+                )}
               </div>
             )}
+            {files.length > 0 && <div style={{ fontSize: 10, color: PALETTE.textMuted, marginBottom: 8 }}>{files.length}/3 fotos</div>}
+
+            {audioFile && (
+              <div style={{ fontSize: 12, color: PALETTE.sage, marginBottom: 8, fontFamily: "'Inter', sans-serif" }}>
+                🎵 {audioFile.name}
+              </div>
+            )}
+
             <input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="¿Qué momento querés guardar?" style={inputStyle} />
+
+            {/* Selector de filtro */}
+            {files.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ color: PALETTE.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", marginBottom: 6 }}>Filtro</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {filterOptions.map((fo) => (
+                    <button
+                      key={fo.id}
+                      onClick={() => setFilter(fo.id)}
+                      style={{
+                        flex: 1,
+                        padding: "8px 0",
+                        borderRadius: 8,
+                        border: `1px solid ${filter === fo.id ? PALETTE.amber : PALETTE.border}`,
+                        background: filter === fo.id ? `${PALETTE.amber}14` : "transparent",
+                        color: filter === fo.id ? PALETTE.amber : PALETTE.textMuted,
+                        fontSize: 12,
+                        fontFamily: "'Inter', sans-serif",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {fo.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div style={{ color: PALETTE.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", margin: "16px 0 8px" }}>¿Quién puede verlo?</div>
             {visOptions.map((opt) => {
@@ -610,18 +704,50 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId }) {
           </div>
         ))}
 
-        {loading && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: 30 }}>Cargando recuerdos...</div>}
+        {loading && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: 30 }}>Cargando...</div>}
         {!loading && posts.length === 0 && (
           <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "40px 10px" }}>Todavía no hay recuerdos guardados acá.</div>
         )}
 
         {posts.map((post) => (
-          <PostCard key={post.id} post={post} onComment={(text) => addComment(post.id, text)} />
+          <PostCard key={post.id} post={post} onComment={(text) => addComment(post.id, text)} onZoomPhoto={onZoomPhoto} />
         ))}
       </div>
     </div>
   );
 }
+
+  const loadPosts = useCallback(async () => {
+    setLoading(true);
+    const { data: postsData } = await supabase
+      .from("posts")
+      .select("*")
+      .eq("profile_id", profile.id)
+      .order("created_at", { ascending: false });
+
+    const withUrlsAndComments = await Promise.all(
+      (postsData || []).map(async (post) => {
+        let imageUrl = null;
+        if (post.image_url) {
+          const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 900);
+          imageUrl = signed?.signedUrl || null;
+        }
+        const { data: comments } = await supabase
+          .from("comments")
+          .select("*")
+          .eq("post_id", post.id)
+          .order("created_at", { ascending: true });
+        return { ...post, imageUrl, comments: comments || [] };
+      })
+    );
+    setPosts(withUrlsAndComments);
+    setLoading(false);
+  }, [profile.id]);
+
+  useEffect(() => {
+    loadPosts();
+  }, [loadPosts]);
+
 
 function tiltFor(id) {
   if (!id) return 0;
@@ -632,7 +758,13 @@ function tiltFor(id) {
 
 function PostCard({ post, onComment, header, onHeaderTap, onZoomPhoto }) {
   const [text, setText] = useState("");
+  const [albumIdx, setAlbumIdx] = useState(0);
   const deg = tiltFor(post.id);
+  const filterCSS = { normal: "none", bw: "grayscale(100%)", retro: "sepia(80%) contrast(90%) brightness(95%)" };
+  const imgFilter = filterCSS[post.filter] || "none";
+  const albumUrls = post.imageUrls && post.imageUrls.length > 0 ? post.imageUrls : (post.imageUrl ? [post.imageUrl] : []);
+  const currentImg = albumUrls[albumIdx] || null;
+
   return (
     <div
       style={{
@@ -654,15 +786,22 @@ function PostCard({ post, onComment, header, onHeaderTap, onZoomPhoto }) {
         </button>
       )}
       <div
-        onClick={() => post.imageUrl && onZoomPhoto && onZoomPhoto(post.imageUrl)}
-        style={{ height: 190, borderRadius: 3, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12, cursor: post.imageUrl ? "pointer" : "default" }}
+        onClick={() => currentImg && onZoomPhoto && onZoomPhoto(currentImg)}
+        style={{ height: 190, borderRadius: 3, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4, cursor: currentImg ? "pointer" : "default", position: "relative" }}
       >
-        {post.imageUrl ? (
-          <img src={post.imageUrl} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        {currentImg ? (
+          <img src={currentImg} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover", filter: imgFilter }} />
         ) : (
           <Camera size={32} color={PALETTE.textMuted} />
         )}
       </div>
+      {albumUrls.length > 1 && (
+        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 8 }}>
+          {albumUrls.map((_, i) => (
+            <button key={i} onClick={() => setAlbumIdx(i)} style={{ width: 8, height: 8, borderRadius: "50%", border: "none", background: i === albumIdx ? PALETTE.amber : PALETTE.border, cursor: "pointer", padding: 0 }} />
+          ))}
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
         <p style={{ color: PALETTE.textPrimary, fontFamily: "'Inter', sans-serif", fontSize: 14, margin: 0, flex: 1 }}>{post.caption}</p>
         <VisibilityTag visibility={post.visibility} />
@@ -1303,10 +1442,101 @@ function PostDetailScreen({ post, myAccountId, circulo, onBack, onRefresh, onZoo
   );
 }
 
+// ---- notas (post-its) ---------------------------------------------------------
+
+const NOTE_COLORS = ["#CAAA5A", "#5E8468", "#C98DA0", "#8FA6C9", "#C9A87C"];
+
+function NotesScreen({ myAccountId }) {
+  const [notes, setNotes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [newText, setNewText] = useState("");
+  const [newColor, setNewColor] = useState(NOTE_COLORS[0]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.from("notes").select("*").eq("owner_id", myAccountId).order("pinned", { ascending: false }).order("created_at", { ascending: false });
+    setNotes(data || []);
+    setLoading(false);
+  }, [myAccountId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function createNote() {
+    if (!newText.trim()) return;
+    await supabase.from("notes").insert({ owner_id: myAccountId, text: newText.trim(), color: newColor });
+    setNewText(""); setShowNew(false);
+    load();
+  }
+
+  async function togglePin(noteId, current) {
+    await supabase.from("notes").update({ pinned: !current }).eq("id", noteId);
+    load();
+  }
+
+  async function deleteNote(noteId) {
+    await supabase.from("notes").delete().eq("id", noteId);
+    load();
+  }
+
+  return (
+    <div>
+      {!showNew ? (
+        <button onClick={() => setShowNew(true)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: `${PALETTE.amber}14`, border: `1.5px dashed ${PALETTE.amber}66`, borderRadius: 12, padding: "12px", color: PALETTE.amber, fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: 13, cursor: "pointer", marginBottom: 14 }}>
+          <Plus size={16} /> Nueva nota
+        </button>
+      ) : (
+        <div style={{ background: newColor + "22", border: `1px solid ${newColor}55`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+          <textarea value={newText} onChange={(e) => setNewText(e.target.value)} placeholder="Escribí tu nota..." rows={3} style={{ ...inputStyle, resize: "none", minHeight: 60 }} />
+          <div style={{ display: "flex", gap: 6, margin: "8px 0" }}>
+            {NOTE_COLORS.map((c) => (
+              <button key={c} onClick={() => setNewColor(c)} style={{ width: 24, height: 24, borderRadius: "50%", border: newColor === c ? `2px solid ${c}` : `1px solid ${PALETTE.border}`, background: c + "55", cursor: "pointer", padding: 0 }} />
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setShowNew(false)} style={{ ...secondaryBtnStyle, flex: 1, padding: "8px 0" }}>Cancelar</button>
+            <button onClick={createNote} style={{ ...primaryBtnStyle, flex: 1, padding: "8px 0" }}>Guardar</button>
+          </div>
+        </div>
+      )}
+
+      {loading && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: 20 }}>Cargando...</div>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+        {notes.map((note) => {
+          const tilt = tiltFor(note.id);
+          return (
+            <div
+              key={note.id}
+              style={{
+                background: note.color + "22",
+                border: `1px solid ${note.color}44`,
+                borderRadius: 6,
+                padding: "14px 12px 10px",
+                transform: `rotate(${tilt}deg)`,
+                boxShadow: "0 4px 10px rgba(0,0,0,0.08)",
+                position: "relative",
+              }}
+            >
+              {note.pinned && <span style={{ position: "absolute", top: 4, right: 6, fontSize: 11 }}>📌</span>}
+              <p style={{ margin: "0 0 8px", fontSize: 13, fontFamily: "'Inter', sans-serif", color: PALETTE.textPrimary, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>{note.text}</p>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button onClick={() => togglePin(note.id, note.pinned)} style={{ background: "none", border: "none", fontSize: 10, color: PALETTE.textMuted, cursor: "pointer" }}>{note.pinned ? "Desfijar" : "📌 Fijar"}</button>
+                <button onClick={() => deleteNote(note.id)} style={{ background: "none", border: "none", fontSize: 10, color: "#d45446", cursor: "pointer" }}>Borrar</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onOpenMyFeed, onOpenPost, onRefreshAccount }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [avatarUrl, setAvatarUrl] = useState(null);
+  const [activeTab, setActiveTab] = useState("recuerdos");
 
   const load = useCallback(async () => {
     if (!myProfile) { setLoading(false); return; }
@@ -1419,6 +1649,20 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
           <Plus size={18} /> Crear recuerdo
         </button>
 
+        {/* Tabs: Recuerdos / Notas */}
+        <div style={{ display: "flex", marginBottom: 14, borderBottom: `1px solid ${PALETTE.border}` }}>
+          <button onClick={() => setActiveTab("recuerdos")} style={{ flex: 1, padding: "10px 0", background: "none", border: "none", borderBottom: activeTab === "recuerdos" ? `2px solid ${PALETTE.amber}` : "2px solid transparent", color: activeTab === "recuerdos" ? PALETTE.amber : PALETTE.textMuted, fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+            📷 Recuerdos
+          </button>
+          <button onClick={() => setActiveTab("notas")} style={{ flex: 1, padding: "10px 0", background: "none", border: "none", borderBottom: activeTab === "notas" ? `2px solid ${PALETTE.amber}` : "2px solid transparent", color: activeTab === "notas" ? PALETTE.amber : PALETTE.textMuted, fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+            📝 Notas
+          </button>
+        </div>
+
+        {activeTab === "notas" && <NotesScreen myAccountId={account?.id} />}
+
+        {activeTab === "recuerdos" && (
+          <>
         {/* grilla de fotos estilo polaroid */}
         {loading && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: 30 }}>Cargando...</div>}
         {!loading && posts.length === 0 && (
@@ -1460,6 +1704,8 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
             );
           })}
         </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1505,7 +1751,6 @@ export default function NestApp() {
   const [openPost, setOpenPost] = useState(null);
   const [viewingProfile, setViewingProfile] = useState(null);
   const [zoomedPhoto, setZoomedPhoto] = useState(null);
-  const [debugMsg, setDebugMsg] = useState("");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -1514,35 +1759,35 @@ export default function NestApp() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    if (!session?.user) { setDebugMsg("No hay sesión activa"); return; }
+    if (!session?.user) { // debug removed return; }
     const uid = session.user.id;
-    setDebugMsg("Sesión OK. UID: " + uid.substring(0, 8) + "... Cargando cuenta...");
+    // debug removed
 
     // Intentar cargar la cuenta
     const { data: acc, error: accErr } = await supabase.from("accounts").select("*").eq("id", uid).maybeSingle();
 
     if (accErr) {
-      setDebugMsg("Error leyendo cuenta: " + accErr.message + " (code: " + accErr.code + ")");
+      // debug removed
       return;
     }
 
     if (!acc) {
-      setDebugMsg("Cuenta no encontrada para UID " + uid.substring(0, 8) + "... Reintentando en 2s...");
+      // debug removed
       await new Promise((r) => setTimeout(r, 2000));
       const { data: acc2, error: acc2Err } = await supabase.from("accounts").select("*").eq("id", uid).maybeSingle();
       if (acc2Err) {
-        setDebugMsg("Reintento falló: " + acc2Err.message);
+        // debug removed
         return;
       }
       if (!acc2) {
-        setDebugMsg("Cuenta no existe en la base después de reintento. El trigger puede no haber funcionado.");
+        // debug removed
         return;
       }
       setAccount(acc2);
-      setDebugMsg("Cuenta cargada en reintento: " + acc2.name);
+      // debug removed
     } else {
       setAccount(acc);
-      setDebugMsg("Cuenta cargada: " + acc.name);
+      // debug removed
     }
 
     const { data: profs } = await supabase.from("profiles").select("*").eq("owner_id", uid).order("created_at", { ascending: true });
@@ -1612,11 +1857,6 @@ export default function NestApp() {
       <style>{FONT_IMPORT}</style>
       <div style={{ width: "100%", maxWidth: 480, margin: "0 auto", minHeight: "100vh", backgroundColor: PALETTE.bgDeep, backgroundImage: BG_PATTERN, backgroundRepeat: "repeat", overflow: "hidden", position: "relative", display: "flex", flexDirection: "column", border: `2px solid ${PALETTE.amber}88`, borderRadius: 24 }}>
         <Lightbox src={zoomedPhoto} onClose={() => setZoomedPhoto(null)} />
-        {debugMsg && (
-          <div style={{ background: "#FFF3CD", padding: "6px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#856404", borderBottom: "1px solid #FFE69C" }}>
-            {debugMsg}
-          </div>
-        )}
         {!session ? (
           <AuthScreen onAuthed={() => {}} />
         ) : showNotifications ? (
@@ -1672,6 +1912,7 @@ export default function NestApp() {
             circulo={circulo}
             myAccountId={session.user.id}
             onBack={() => setOpenProfileId(null)}
+            onZoomPhoto={setZoomedPhoto}
           />
         ) : (
           <>
