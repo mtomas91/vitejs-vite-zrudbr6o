@@ -739,16 +739,6 @@ function PostCard({ post, onComment, header, onHeaderTap, onZoomPhoto }) {
     setTouchStart(e.touches[0].clientX);
   }
 
-  function handleTouchEnd(e) {
-    if (touchStart === null) return;
-    const diff = touchStart - e.changedTouches[0].clientX;
-    if (Math.abs(diff) > 40) {
-      if (diff > 0 && albumIdx < albumUrls.length - 1) setAlbumIdx(i => i + 1);
-      if (diff < 0 && albumIdx > 0) setAlbumIdx(i => i - 1);
-    }
-    setTouchStart(null);
-  }
-
   return (
     <div
       style={{
@@ -770,9 +760,19 @@ function PostCard({ post, onComment, header, onHeaderTap, onZoomPhoto }) {
         </button>
       )}
       <div
-        onClick={() => currentImg && onZoomPhoto && onZoomPhoto(currentImg)}
         onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
+        onTouchEnd={(e) => {
+          if (touchStart === null) return;
+          const diff = touchStart - e.changedTouches[0].clientX;
+          if (Math.abs(diff) > 40) {
+            if (diff > 0 && albumIdx < albumUrls.length - 1) setAlbumIdx(i => i + 1);
+            if (diff < 0 && albumIdx > 0) setAlbumIdx(i => i - 1);
+          } else if (Math.abs(diff) < 5) {
+            // fue un tap, no un swipe
+            if (currentImg && onZoomPhoto) onZoomPhoto(currentImg);
+          }
+          setTouchStart(null);
+        }}
         style={{ height: 190, borderRadius: 3, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4, cursor: currentImg ? "pointer" : "default", position: "relative" }}
       >
         {currentImg ? (
