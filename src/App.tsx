@@ -1195,26 +1195,37 @@ function OtherProfileScreen({ ownerId, profileInfo, onBack }) {
 
 // ---- chats --------------------------------------------------------------------
 
-function ChatsScreen({ circulo, onOpenChat }) {
+function ChatsScreen({ circulo, onOpenChat, unreadChatFrom }) {
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 90 }}>
       <TopBar title="Chats" />
       <div style={{ padding: "0 20px" }}>
         {circulo.length === 0 && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "40px 10px" }}>Todavía no tenés a nadie en tu círculo.</div>}
-        {circulo.map((c) => (
-          <button key={c.id} onClick={() => onOpenChat(c)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, background: PALETTE.bgPanel, border: `1px solid ${PALETTE.border}`, borderRadius: 14, padding: "12px 14px", marginBottom: 10, cursor: "pointer", textAlign: "left" }}>
-            <Avatar name={c.name} hue={PALETTE.sage} size={42} />
-            <div style={{ color: PALETTE.textPrimary, fontSize: 13.5, fontFamily: "'Inter', sans-serif", fontWeight: 600 }}>{c.name}</div>
-          </button>
-        ))}
+        {circulo.map((c) => {
+          const hasUnread = (unreadChatFrom || []).includes(c.id);
+          return (
+            <button key={c.id} onClick={() => onOpenChat(c)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, background: hasUnread ? `${PALETTE.amber}10` : PALETTE.bgPanel, border: `1px solid ${hasUnread ? PALETTE.amber + "44" : PALETTE.border}`, borderRadius: 14, padding: "12px 14px", marginBottom: 10, cursor: "pointer", textAlign: "left" }}>
+              <div style={{ position: "relative" }}>
+                <Avatar name={c.name} hue={PALETTE.sage} size={42} />
+                {hasUnread && <span style={{ position: "absolute", top: -2, right: -2, width: 10, height: 10, borderRadius: "50%", background: "#d45446", border: `2px solid ${PALETTE.bgDeep}` }} />}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: PALETTE.textPrimary, fontSize: 13.5, fontFamily: "'Inter', sans-serif", fontWeight: hasUnread ? 700 : 600 }}>{c.name}</div>
+                {hasUnread && <div style={{ color: PALETTE.amber, fontSize: 11, fontFamily: "'Inter', sans-serif" }}>Mensaje nuevo</div>}
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function ChatDetailScreen({ contact, myAccountId, myName, onBack }) {
+function ChatDetailScreen({ contact, myAccountId, myName, onBack, onRefresh }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
+  const [chatFile, setChatFile] = useState(null);
+  const [sending, setSending] = useState(false);
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -1222,39 +1233,90 @@ function ChatDetailScreen({ contact, myAccountId, myName, onBack }) {
       .select("*")
       .or(`and(from_id.eq.${myAccountId},to_id.eq.${contact.id}),and(from_id.eq.${contact.id},to_id.eq.${myAccountId})`)
       .order("created_at", { ascending: true });
-    setMessages(data || []);
+
+    const withUrls = await Promise.all(
+      (data || []).map(async (m) => {
+        let imgUrl = null;
+        if (m.image_url) {
+          const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(m.image_url, 900);
+          imgUrl = signed?.signedUrl || null;
+        }
+        return { ...m, imgUrl };
+      })
+    );
+    setMessages(withUrls);
+
+    // Marcar como leídos los mensajes que me mandaron
+    await supabase.from("messages").update({ read: true }).eq("from_id", contact.id).eq("to_id", myAccountId).eq("read", false);
   }, [contact.id, myAccountId]);
 
   useEffect(() => { load(); }, [load]);
 
+  function handleBack() {
+    if (onRefresh) onRefresh();
+    onBack();
+  }
+
   async function send() {
-    if (!text.trim()) return;
-    await supabase.from("messages").insert({ from_id: myAccountId, to_id: contact.id, text: text.trim() });
+    if (!text.trim() && !chatFile) return;
+    setSending(true);
+
+    let imagePath = null;
+    if (chatFile) {
+      const path = `${myAccountId}/chat/${Date.now()}-${chatFile.name}`;
+      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, chatFile);
+      if (!upErr) imagePath = path;
+    }
+
+    await supabase.from("messages").insert({
+      from_id: myAccountId,
+      to_id: contact.id,
+      text: text.trim() || (chatFile ? "📷 Foto" : ""),
+      image_url: imagePath,
+    });
     await supabase.from("notifications").insert({ account_id: contact.id, text: "Tenés un nuevo mensaje de " + (myName || "alguien") });
     setText("");
+    setChatFile(null);
+    setSending(false);
     load();
   }
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-      <TopBar title={contact.name} onBack={onBack} right={<Avatar name={contact.name} hue={PALETTE.sage} size={32} />} />
+      <TopBar title={contact.name} onBack={handleBack} right={<Avatar name={contact.name} hue={PALETTE.sage} size={32} />} />
       <div style={{ flex: 1, overflowY: "auto", padding: "0 16px" }}>
         {messages.length === 0 && <div style={{ textAlign: "center", color: PALETTE.textMuted, fontSize: 13, padding: "40px 10px" }}>Decí hola 👋</div>}
         {messages.map((m) => (
           <div key={m.id} style={{ display: "flex", justifyContent: m.from_id === myAccountId ? "flex-end" : "flex-start", marginBottom: 8 }}>
             <div style={{ maxWidth: "75%", background: m.from_id === myAccountId ? PALETTE.amber : PALETTE.bgPanel, color: m.from_id === myAccountId ? "#FFFFFF" : PALETTE.textPrimary, border: m.from_id === myAccountId ? "none" : `1px solid ${PALETTE.border}`, borderRadius: 14, padding: "9px 12px", fontSize: 13, fontFamily: "'Inter', sans-serif" }}>
-              {m.text}
+              {m.imgUrl && (
+                <img src={m.imgUrl} alt="foto" style={{ width: "100%", maxWidth: 200, borderRadius: 8, marginBottom: m.text && m.text !== "📷 Foto" ? 6 : 0 }} />
+              )}
+              {m.text && m.text !== "📷 Foto" && <div>{m.text}</div>}
+              {m.text === "📷 Foto" && !m.imgUrl && <div>{m.text}</div>}
             </div>
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "10px 16px 18px", borderTop: `1px solid ${PALETTE.border}` }}>
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Escribir un mensaje..." style={{ ...inputStyle, flex: 1 }} />
-        {text.trim() && (
-          <button onClick={send} style={{ width: 38, height: 38, borderRadius: "50%", border: "none", background: PALETTE.amber, color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-            <Send size={16} />
-          </button>
+      <div style={{ borderTop: `1px solid ${PALETTE.border}`, padding: "8px 16px 18px" }}>
+        {chatFile && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: PALETTE.sage }}>📷 {chatFile.name}</span>
+            <button onClick={() => setChatFile(null)} style={{ background: "none", border: "none", color: PALETTE.textMuted, cursor: "pointer", fontSize: 14 }}>×</button>
+          </div>
         )}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="file" accept="image/*" id="chat-photo" onChange={(e) => setChatFile(e.target.files?.[0] || null)} style={{ display: "none" }} />
+          <label htmlFor="chat-photo" style={{ display: "flex", alignItems: "center", cursor: "pointer", color: PALETTE.textMuted, flexShrink: 0 }}>
+            <ImageIcon size={20} />
+          </label>
+          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Escribir un mensaje..." style={{ ...inputStyle, flex: 1 }} />
+          {(text.trim() || chatFile) && (
+            <button onClick={send} disabled={sending} style={{ width: 38, height: 38, borderRadius: "50%", border: "none", background: PALETTE.amber, color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+              <Send size={16} />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1733,7 +1795,7 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
   );
 }
 
-function BottomNav({ tab, setTab }) {
+function BottomNav({ tab, setTab, unreadChatCount }) {
   const items = [
     { id: "wall", icon: Home, label: "Wall" },
     { id: "chats", icon: MessagesSquare, label: "Chats" },
@@ -1745,9 +1807,11 @@ function BottomNav({ tab, setTab }) {
       {items.map((it) => {
         const active = tab === it.id;
         const Icon = it.icon;
+        const showDot = it.id === "chats" && unreadChatCount > 0;
         return (
-          <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer", color: active ? PALETTE.amber : PALETTE.textMuted }}>
+          <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer", color: active ? PALETTE.amber : PALETTE.textMuted, position: "relative" }}>
             <Icon size={20} strokeWidth={active ? 2.4 : 1.8} />
+            {showDot && <span style={{ position: "absolute", top: -2, right: "30%", width: 8, height: 8, borderRadius: "50%", background: "#d45446", border: `1.5px solid ${PALETTE.bgPanel}` }} />}
             <span style={{ fontSize: 10.5, fontFamily: "'Inter', sans-serif", fontWeight: active ? 600 : 400 }}>{it.label}</span>
           </button>
         );
@@ -1765,6 +1829,8 @@ export default function NestApp() {
   const [circulo, setCirculo] = useState([]);
   const [solicitudes, setSolicitudes] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [unreadChatFrom, setUnreadChatFrom] = useState([]);
   const [tab, setTab] = useState("wall");
   const [openProfileId, setOpenProfileId] = useState(null);
   const [openChatContact, setOpenChatContact] = useState(null);
@@ -1843,6 +1909,12 @@ export default function NestApp() {
     // Cargar notificaciones reales
     const { data: notifs } = await supabase.from("notifications").select("*").eq("account_id", uid).eq("read", false).order("created_at", { ascending: false }).limit(20);
     setNotifications(notifs || []);
+
+    // Cargar mensajes no leídos
+    const { data: unreadMsgs } = await supabase.from("messages").select("from_id").eq("to_id", uid).eq("read", false);
+    const unreadSenders = [...new Set((unreadMsgs || []).map((m) => m.from_id))];
+    setUnreadChatCount((unreadMsgs || []).length);
+    setUnreadChatFrom(unreadSenders);
   }, [session]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -1926,7 +1998,7 @@ export default function NestApp() {
             onZoomPhoto={setZoomedPhoto}
           />
         ) : openChatContact ? (
-          <ChatDetailScreen contact={openChatContact} myAccountId={session.user.id} myName={account?.name} onBack={() => setOpenChatContact(null)} />
+          <ChatDetailScreen contact={openChatContact} myAccountId={session.user.id} myName={account?.name} onBack={() => setOpenChatContact(null)} onRefresh={loadAll} />
         ) : openProfile ? (
           <FeedScreen
             profile={openProfile}
@@ -1950,7 +2022,7 @@ export default function NestApp() {
                 onZoomPhoto={setZoomedPhoto}
               />
             )}
-            {tab === "chats" && <ChatsScreen circulo={circulo} onOpenChat={setOpenChatContact} />}
+            {tab === "chats" && <ChatsScreen circulo={circulo} onOpenChat={setOpenChatContact} unreadChatFrom={unreadChatFrom} />}
             {tab === "circulo" && (
               <CirculoScreen myAccountId={session.user.id} circulo={circulo} solicitudes={solicitudes} onRefresh={loadAll} onViewProfile={(ownerId, profileInfo) => setViewingProfile({ ownerId, profileInfo })} />
             )}
@@ -1966,7 +2038,7 @@ export default function NestApp() {
                 onRefreshAccount={loadAll}
               />
             )}
-            <BottomNav tab={tab} setTab={setTab} />
+            <BottomNav tab={tab} setTab={setTab} unreadChatCount={unreadChatCount} />
           </>
         )}
       </div>
