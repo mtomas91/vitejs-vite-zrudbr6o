@@ -434,6 +434,7 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId, myName, on
   const [files, setFiles] = useState([]);
   const [audioFile, setAudioFile] = useState(null);
   const [filter, setFilter] = useState("normal");
+  const [mode, setMode] = useState("publicacion");
   const [visibility, setVisibility] = useState("privado");
   const [sharedWith, setSharedWith] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -476,7 +477,7 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId, myName, on
   useEffect(() => { loadPosts(); }, [loadPosts]);
 
   function resetForm() {
-    setCaption(""); setFiles([]); setAudioFile(null); setFilter("normal"); setVisibility("privado"); setSharedWith([]); setShowPublish(false); setPublishError("");
+    setCaption(""); setFiles([]); setAudioFile(null); setFilter("normal"); setMode("publicacion"); setVisibility("privado"); setSharedWith([]); setShowPublish(false); setPublishError("");
   }
 
   function toggleShared(id) {
@@ -528,6 +529,7 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId, myName, on
         image_url: imagePath,
         image_urls: imagePaths,
         filter,
+        mode,
         visibility,
       })
       .select()
@@ -657,6 +659,35 @@ function FeedScreen({ profile, isOwner, circulo, onBack, myAccountId, myName, on
                 </div>
               </div>
             )}
+
+            {/* Selector de modo */}
+            <div style={{ color: PALETTE.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", margin: "16px 0 8px" }}>Tipo de recuerdo</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <button
+                onClick={() => setMode("publicacion")}
+                style={{
+                  flex: 1, padding: "10px 8px", borderRadius: 10,
+                  border: `1px solid ${mode === "publicacion" ? PALETTE.amber : PALETTE.border}`,
+                  background: mode === "publicacion" ? `${PALETTE.amber}14` : "transparent",
+                  cursor: "pointer", textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 600, color: mode === "publicacion" ? PALETTE.amber : PALETTE.textMuted, fontFamily: "'Inter', sans-serif" }}>📷 Publicación</div>
+                <div style={{ fontSize: 10, color: PALETTE.textMuted, marginTop: 2 }}>24hs en Wall + queda en tu perfil</div>
+              </button>
+              <button
+                onClick={() => setMode("historia")}
+                style={{
+                  flex: 1, padding: "10px 8px", borderRadius: 10,
+                  border: `1px solid ${mode === "historia" ? PALETTE.amber : PALETTE.border}`,
+                  background: mode === "historia" ? `${PALETTE.amber}14` : "transparent",
+                  cursor: "pointer", textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 600, color: mode === "historia" ? PALETTE.amber : PALETTE.textMuted, fontFamily: "'Inter', sans-serif" }}>⏳ Historia</div>
+                <div style={{ fontSize: 10, color: PALETTE.textMuted, marginTop: 2 }}>24hs en Wall y desaparece</div>
+              </button>
+            </div>
 
             <div style={{ color: PALETTE.textMuted, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", margin: "16px 0 8px" }}>¿Quién puede verlo?</div>
             {visOptions.map((opt) => {
@@ -790,7 +821,10 @@ function PostCard({ post, onComment, header, onHeaderTap, onZoomPhoto }) {
       )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
         <p style={{ color: PALETTE.textPrimary, fontFamily: "'Inter', sans-serif", fontSize: 14, margin: 0, flex: 1 }}>{post.caption}</p>
-        <VisibilityTag visibility={post.visibility} />
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {post.mode === "historia" && <span style={{ fontSize: 10, color: PALETTE.textMuted, fontFamily: "'JetBrains Mono', monospace" }}>⏳</span>}
+          <VisibilityTag visibility={post.visibility} />
+        </div>
       </div>
       {post.comments?.length > 0 && (
         <div style={{ marginBottom: 10 }}>
@@ -907,7 +941,7 @@ function WallScreen({ myAccountId, myName, onOpenNotifications, unreadCount, onL
 
 // ---- círculo ------------------------------------------------------------------
 
-function CirculoScreen({ myAccountId, circulo, solicitudes, onRefresh }) {
+function CirculoScreen({ myAccountId, circulo, solicitudes, onRefresh, onViewProfile }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -1051,11 +1085,13 @@ function CirculoScreen({ myAccountId, circulo, solicitudes, onRefresh }) {
                 ) : (
                   members.map((c) => (
                     <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 4px", borderBottom: `1px solid ${PALETTE.border}` }}>
-                      <Avatar name={c.name} hue={PALETTE.sage} size={38} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ color: PALETTE.textPrimary, fontSize: 13.5, fontFamily: "'Inter', sans-serif" }}>{c.name}</div>
-                        <div style={{ color: PALETTE.textMuted, fontSize: 11 }}>{categoryLabels[c.category || "friends"]}</div>
-                      </div>
+                      <button onClick={() => onViewProfile && onViewProfile(c.id, { name: c.name, hue: PALETTE.sage })} style={{ display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer", padding: 0, flex: 1 }}>
+                        <Avatar name={c.name} hue={PALETTE.sage} size={38} />
+                        <div style={{ textAlign: "left" }}>
+                          <div style={{ color: PALETTE.textPrimary, fontSize: 13.5, fontFamily: "'Inter', sans-serif" }}>{c.name}</div>
+                          <div style={{ color: PALETTE.textMuted, fontSize: 11 }}>{categoryLabels[c.category || "friends"]}</div>
+                        </div>
+                      </button>
                       <select
                         value={c.category || "friends"}
                         onChange={(e) => changeCategory(c.id, e.target.value)}
@@ -1091,7 +1127,7 @@ function OtherProfileScreen({ ownerId, profileInfo, onBack }) {
     const { data: profs } = await supabase.from("profiles").select("id").eq("owner_id", ownerId).eq("tipo", "adulto").limit(1);
     const profId = profs?.[0]?.id;
     if (!profId) { setLoading(false); return; }
-    const { data } = await supabase.from("posts").select("*").eq("profile_id", profId).order("created_at", { ascending: false });
+    const { data } = await supabase.from("posts").select("*").eq("profile_id", profId).or("mode.eq.publicacion,mode.is.null").order("created_at", { ascending: false });
     const withUrls = await Promise.all(
       (data || []).map(async (post) => {
         let imageUrl = null;
@@ -1534,7 +1570,7 @@ function CuentaScreen({ account, myProfile, circulo, profiles, onOpenConfig, onO
       setAvatarUrl(signed?.signedUrl || null);
     }
 
-    const { data } = await supabase.from("posts").select("*").eq("profile_id", myProfile.id).order("created_at", { ascending: false });
+    const { data } = await supabase.from("posts").select("*").eq("profile_id", myProfile.id).or("mode.eq.publicacion,mode.is.null").order("created_at", { ascending: false });
     const withUrls = await Promise.all(
       (data || []).map(async (post) => {
         let imageUrl = null;
@@ -1916,7 +1952,7 @@ export default function NestApp() {
             )}
             {tab === "chats" && <ChatsScreen circulo={circulo} onOpenChat={setOpenChatContact} />}
             {tab === "circulo" && (
-              <CirculoScreen myAccountId={session.user.id} circulo={circulo} solicitudes={solicitudes} onRefresh={loadAll} />
+              <CirculoScreen myAccountId={session.user.id} circulo={circulo} solicitudes={solicitudes} onRefresh={loadAll} onViewProfile={(ownerId, profileInfo) => setViewingProfile({ ownerId, profileInfo })} />
             )}
             {tab === "cuenta" && (
               <CuentaScreen
