@@ -876,8 +876,15 @@ function WallScreen({ myAccountId, myName, onOpenNotifications, unreadCount, onL
           const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(post.image_url, 900);
           imageUrl = signed?.signedUrl || null;
         }
+        let imageUrls = [];
+        if (post.image_urls && post.image_urls.length > 0) {
+          imageUrls = await Promise.all(post.image_urls.map(async (path) => {
+            const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 900);
+            return signed?.signedUrl || null;
+          }));
+        }
         const { data: comments } = await supabase.from("comments").select("*").eq("post_id", post.id).order("created_at", { ascending: true });
-        return { ...post, imageUrl, comments: comments || [], header: profilesMap[post.profile_id] };
+        return { ...post, imageUrl, imageUrls: imageUrls.filter(Boolean), comments: comments || [], header: profilesMap[post.profile_id] };
       })
     );
     setPosts(enriched);
@@ -1331,8 +1338,14 @@ function PostDetailScreen({ post, myAccountId, myName, circulo, onBack, onRefres
   const [saving, setSaving] = useState(false);
   const [sharedWith, setSharedWith] = useState([]);
   const [sharesLoaded, setSharesLoaded] = useState(false);
+  const [detailAlbumIdx, setDetailAlbumIdx] = useState(0);
+  const [detailTouchStart, setDetailTouchStart] = useState(null);
 
   const isOwner = post.owner_id === myAccountId;
+  const detailAlbumUrls = post.imageUrls && post.imageUrls.length > 0 ? post.imageUrls : (post.imageUrl ? [post.imageUrl] : []);
+  const detailCurrentImg = detailAlbumUrls[detailAlbumIdx] || null;
+  const filterCSS = { normal: "none", bw: "grayscale(100%)", retro: "sepia(80%) contrast(90%) brightness(95%)" };
+  const imgFilter = filterCSS[post.filter] || "none";
 
   const loadComments = useCallback(async () => {
     const { data } = await supabase.from("comments").select("*").eq("post_id", post.id).order("created_at", { ascending: true });
@@ -1407,15 +1420,33 @@ function PostDetailScreen({ post, myAccountId, myName, circulo, onBack, onRefres
         >
           <TornEdge />
           <div
-            onClick={() => post.imageUrl && onZoomPhoto && onZoomPhoto(post.imageUrl)}
-            style={{ height: 220, borderRadius: 3, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12, cursor: post.imageUrl ? "pointer" : "default" }}
+            onTouchStart={(e) => setDetailTouchStart(e.touches[0].clientX)}
+            onTouchEnd={(e) => {
+              if (detailTouchStart === null) return;
+              const diff = detailTouchStart - e.changedTouches[0].clientX;
+              if (Math.abs(diff) > 40) {
+                if (diff > 0 && detailAlbumIdx < detailAlbumUrls.length - 1) setDetailAlbumIdx(i => i + 1);
+                if (diff < 0 && detailAlbumIdx > 0) setDetailAlbumIdx(i => i - 1);
+              } else if (Math.abs(diff) < 5 && detailCurrentImg && onZoomPhoto) {
+                onZoomPhoto(detailCurrentImg);
+              }
+              setDetailTouchStart(null);
+            }}
+            style={{ height: 220, borderRadius: 3, overflow: "hidden", background: "linear-gradient(160deg,#F0EBE0,#E4DDCF)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4, cursor: detailCurrentImg ? "pointer" : "default" }}
           >
-            {post.imageUrl ? (
-              <img src={post.imageUrl} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            {detailCurrentImg ? (
+              <img src={detailCurrentImg} alt={post.caption} style={{ width: "100%", height: "100%", objectFit: "cover", filter: imgFilter }} />
             ) : (
               <Camera size={32} color={PALETTE.textMuted} />
             )}
           </div>
+          {detailAlbumUrls.length > 1 && (
+            <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 8 }}>
+              {detailAlbumUrls.map((_, i) => (
+                <button key={i} onClick={() => setDetailAlbumIdx(i)} style={{ width: 8, height: 8, borderRadius: "50%", border: "none", background: i === detailAlbumIdx ? PALETTE.amber : PALETTE.border, cursor: "pointer", padding: 0 }} />
+              ))}
+            </div>
+          )}
           <p style={{ color: PALETTE.textPrimary, fontFamily: "'Inter', sans-serif", fontSize: 14, margin: "0 0 6px" }}>{post.caption}</p>
           <VisibilityTag visibility={visibility} />
         </div>
